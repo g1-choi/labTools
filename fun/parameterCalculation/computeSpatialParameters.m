@@ -1,25 +1,26 @@
-function out = computeSpatialParameters(strideEvents,markerData,angleData,s)
+function out = computeSpatialParameters(strideEvents,markerData, ...
+    angleData,s)
 %This function computes summary spatial parameters per stride
 %   This function outputs a 'parameterSeries' object, which can be
 % concatenated with other 'parameterSeries' objects, for example, with
 % those from 'computeTemporalParameters'. While this function is used for
 % spatial parameters exclusively, it should work for any 'labTS' object.
-% This function computes summary spatial parameters.
+% This function computes summary spatial parameters per stride.
 %
 % See also computeHreflexParameters, computeTemporalParameters,
 % computeForceParameters, parameterSeries
 
 %% Gait Stride Event Times
-timeSHS  = strideEvents.tSHS;
-timeFTO  = strideEvents.tFTO;
-timeFHS  = strideEvents.tFHS;
-timeSTO  = strideEvents.tSTO;
-timeSHS2 = strideEvents.tSHS2;
-timeFTO2 = strideEvents.tFTO2;
-timeFHS2 = strideEvents.tFHS2;
-timeSTO2 = strideEvents.tSTO2;
-eventTimes = [timeSHS timeFTO timeFHS timeSTO timeSHS2 timeFTO2 ...
-    timeFHS2 timeSTO2];
+timeSHS  = strideEvents.tSHS;   % slow heel strike event times
+timeFTO  = strideEvents.tFTO;   % fast toe off event times
+timeFHS  = strideEvents.tFHS;   % fast heel strike event times
+timeSTO  = strideEvents.tSTO;   % slow toe off event times
+timeSHS2 = strideEvents.tSHS2;  % 2nd slow heel strike event times
+timeFTO2 = strideEvents.tFTO2;  % 2nd fast toe off event times
+timeFHS2 = strideEvents.tFHS2;  % 2nd fast heel strike event times
+timeSTO2 = strideEvents.tSTO2;  % 2nd slow toe off event times
+eventTimes = [timeSHS timeFTO timeFHS timeSTO ...
+    timeSHS2 timeFTO2 timeFHS2 timeSTO2];
 % numbers correspond to the column of the 'eventTimes' matrix
 SHS = 1; FTO = 2; FHS = 3; STO = 4; SHS2 = 5; FTO2 = 6; FHS2 = 7; STO2 = 8;
 
@@ -145,8 +146,8 @@ aux = { ...
 paramLabels = aux(:,1);
 description = aux(:,2);
 
-%% Sanity check & correction: look for markers at (0,0,0) and set data to NaN
-[dd,ll] = markerData.getOrientedData;
+%% Detect Any Markers at Origin (0,0,0) & Set Data to 'NaN'
+[dd,ll] = markerData.getOrientedData();
 dd = permute(dd,[1 3 2]);
 ee = all(dd == 0,2);
 if any(ee(:))
@@ -154,8 +155,8 @@ if any(ee(:))
         'for spatial parameter computation.'];
     for ii = 1:size(ee,3)
         if any(ee(:,1,ii)) && sum(ee(:,1,ii)) * markerData.sampPeriod > 1
-            msg = [msg ' ' ll{i} ' was at origin for ' ...
-                num2str(sum(ee(:,1,i)) * markerData.sampPeriod) 's.'];
+            msg = [msg ' ' ll{ii} ' was at origin for ' ...
+                num2str(sum(ee(:,1,ii)) * markerData.sampPeriod) 's.'];
         end
     end
     warning(msg);
@@ -179,38 +180,36 @@ end
     sAnk_fromAvgHipAbs,fAnk_fromAvgHipAbs] = ...
     getKinematicDataAbs(eventTimes,markerData,angleData,s);
 
-%% Intralimb
+%% Compute Intralimb Spatial Parameters
 if strcmp(s,'L')        % if slow leg is left, ...
     f = 'R';            % fast is right
 elseif strcmp(s,'R')    % if slow leg is right, ...
     f = 'L';
 else                    % otherwise, invalid leg ID
-    error();
+    error('Invalid slow leg input argument, must be ''R'' or ''L''');
 end
 
-%step lengths (1D)
-stepLengthSlow=sAnkFwd(:,SHS2)-fAnkFwd(:,SHS2); %If sAnkFwd and fAnkFwd are measured with respect to the same reference, this is the same as just subtracting the marker positions
-stepLengthFast=fAnkFwd(:,FHS)-sAnkFwd(:,FHS);
-takeOffLengthSlow=sAnkFwd(:,STO)-fAnkFwd(:,STO);
-takeOffLengthFast=fAnkFwd(:,FTO)-sAnkFwd(:,FTO);
+% step lengths (1D)
+stepLengthSlow = sAnkFwd(:,SHS2) - fAnkFwd(:,SHS2); %If sAnkFwd and fAnkFwd are measured with respect to the same reference, this is the same as just subtracting the marker positions
+stepLengthFast = fAnkFwd(:,FHS) - sAnkFwd(:,FHS);
+takeOffLengthSlow = sAnkFwd(:,STO) - fAnkFwd(:,STO);
+takeOffLengthFast = fAnkFwd(:,FTO) - sAnkFwd(:,FTO);
 
 %ALTERNATIVE COMPUTATION WAY: doesn't use HIP, so HIP loss is not an issue
 %(HIP value doesn't affect tis computation, but since it is used as
 %reference, it generates NaN downstream if absent:
 %Because we are not using HIP, walking direction is determined through Left
 %to Right ankle vector.
-stepLengthSlow=sAnkFwdAbs(:,SHS2)-fAnkFwdAbs(:,SHS2);
-stepLengthFast=fAnkFwdAbs(:,FHS)-sAnkFwdAbs(:,FHS);
-takeOffLengthSlow=sAnkFwdAbs(:,STO)-fAnkFwdAbs(:,STO);
-takeOffLengthFast=fAnkFwdAbs(:,FTO)-sAnkFwdAbs(:,FTO);
-
+stepLengthSlow = sAnkFwdAbs(:,SHS2) - fAnkFwdAbs(:,SHS2);
+stepLengthFast = fAnkFwdAbs(:,FHS) - sAnkFwdAbs(:,FHS);
+takeOffLengthSlow = sAnkFwdAbs(:,STO) - fAnkFwdAbs(:,STO);
+takeOffLengthFast = fAnkFwdAbs(:,FTO) - sAnkFwdAbs(:,FTO);
 
 %step length (2D) Express w.r.t the hip -- don't save, for now.
 stepLengthSlow2D=sqrt(sum((sAnk2D(:,SHS2,:)-fAnk2D(:,SHS2,:)).^2,3));
 stepLengthFast2D=sqrt(sum((fAnk2D(:,FHS,:)-sAnk2D(:,FHS,:)).^2,3));
 
 %Spatial parameters - in millimeters
-
 %alpha (positive portion of interlimb angle at HS)
 alphaSlow=sAnkFwd(:,SHS2);
 alphaTemp=sAnkFwd(:,SHS);
@@ -240,9 +239,7 @@ RSloWPos=abs(betaSlow./alphaTemp);
 RFastPosSHS=abs(XFast./alphaFast);
 RSlowPosFHS=abs(XSlow./alphaTemp);
 
-
 %Spatial parameters - in degrees
-
 %alpha (positive portion of interlimb angle at HS)
 alphaAngSlow=sAngle(:,SHS2);
 alphaAngTemp=sAngle(:,SHS);
@@ -264,31 +261,33 @@ alphaDeltaSlow=sAngle(:,SHS2)-fAngle(:,FHS); %same as alphaAngSlow-alphaAngFast
 alphaDeltaFast=fAngle(:,FHS)-sAngle(:,SHS);
 
 %%
-alphaTemp_fromAvgHip = (-1)*sAnk_fromAvgHip(:,SHS); % Multiply by -1 to correct for direction alpha has to be positive
-alphaFast_fromAvgHip = (-1)*fAnk_fromAvgHip(:,FHS);
-alphaSlow_fromAvgHip = (-1)*sAnk_fromAvgHip(:,SHS2);
+% multiply by -1 to correct for direction since alpha must be positive
+alphaTemp_fromAvgHip = -1 * sAnk_fromAvgHip(:,SHS);
+alphaFast_fromAvgHip = -1 * fAnk_fromAvgHip(:,FHS);
+alphaSlow_fromAvgHip = -1 * sAnk_fromAvgHip(:,SHS2);
 
-xTemp_fromAvgHip = (-1)*fAnk_fromAvgHip(:,SHS);
-xSlow_fromAvgHip = (-1)*sAnk_fromAvgHip(:,FHS);
-xFast_fromAvgHip = (-1)*fAnk_fromAvgHip(:,SHS2);
+xTemp_fromAvgHip = -1 * fAnk_fromAvgHip(:,SHS);
+xSlow_fromAvgHip = -1 * sAnk_fromAvgHip(:,FHS);
+xFast_fromAvgHip = -1 * fAnk_fromAvgHip(:,SHS2);
 
-%% Interlimb
-
-stepLengthDiff=stepLengthFast-stepLengthSlow;
-stepLengthAsym=stepLengthDiff./(stepLengthFast+stepLengthSlow);
-stepLengthDiff2D=stepLengthFast2D-stepLengthSlow2D;
-stepLengthAsym2D=stepLengthDiff2D./(stepLengthFast2D+stepLengthSlow2D);
-angularSpreadDiff=omegaFast-omegaSlow;
-angularSpreadAsym=angularSpreadDiff./(omegaFast+omegaSlow);
-Sout=(alphaFast-alphaSlow)./(alphaFast+alphaSlow);
-Serror=alphaRatioSlow-alphaRatioFast;
-SerrorOld=alphaRatioFast./alphaRatioSlow;
-Sgoal=(stanceRangeFast-stanceRangeSlow)./(stanceRangeFast+stanceRangeSlow);
-centerSlow=(alphaAngSlow+betaAngSlow)./2;
-centerFast=(alphaAngFast+betaAngFast)./2;
-angleOfOscillationAsym=(centerFast-centerSlow);
-Xasym=Xdiff./(stepLengthFast+stepLengthSlow);
-alphaAsym=alphaDiff./(stepLengthFast+stepLengthSlow);
+%% Compute Interlimb Spatial Parameters
+stepLengthDiff = stepLengthFast - stepLengthSlow;
+stepLengthAsym = stepLengthDiff ./ (stepLengthFast + stepLengthSlow);
+stepLengthDiff2D = stepLengthFast2D - stepLengthSlow2D;
+stepLengthAsym2D = ...
+    stepLengthDiff2D ./ (stepLengthFast2D + stepLengthSlow2D);
+angularSpreadDiff = omegaFast - omegaSlow;
+angularSpreadAsym = angularSpreadDiff ./ (omegaFast + omegaSlow);
+Sout = (alphaFast - alphaSlow) ./ (alphaFast + alphaSlow);
+Serror = alphaRatioSlow - alphaRatioFast;
+SerrorOld = alphaRatioFast ./ alphaRatioSlow;
+Sgoal = (stanceRangeFast - stanceRangeSlow) ./ ...
+    (stanceRangeFast + stanceRangeSlow);
+centerSlow = (alphaAngSlow + betaAngSlow) ./ 2;
+centerFast = (alphaAngFast + betaAngFast) ./ 2;
+angleOfOscillationAsym = centerFast - centerSlow;
+Xasym = Xdiff ./ (stepLengthFast + stepLengthSlow);
+alphaAsym = alphaDiff ./ (stepLengthFast + stepLengthSlow);
 %phase shift (using angles)
 % slowlimb=sAngle(indSHS:indSHS2);
 % fastlimb=fAngle(indSHS:indSHS2);
@@ -304,207 +303,235 @@ alphaAsym=alphaDiff./(stepLengthFast+stepLengthSlow);
 % fastlimb=fastlimb-mean(fastlimb);
 % % Circular correlation
 % phaseShiftPos=circCorr(slowlimb,fastlimb);
-T=length(timeSHS);
-phaseShift=nan(T,1);
-phaseShiftPos=nan(T,1);
-for i=1:T
-    if ~isnan(timeSHS(i)) && ~isnan(timeSHS2(i))
+T = length(timeSHS);
+phaseShift = nan(T,1);
+phaseShiftPos = nan(T,1);
+for ii = 1:T
+    if ~isnan(timeSHS(ii)) && ~isnan(timeSHS2(ii))
         if ~isempty(angleData)
-            sLimb=angleData.split(timeSHS(i),timeSHS2(i)).getDataAsVector({[s,'Limb']});
-            fLimb=angleData.split(timeSHS(i),timeSHS2(i)).getDataAsVector({[f,'Limb']});
+            sLimb = angleData.split(timeSHS(ii),timeSHS2(ii)).getDataAsVector({[s 'Limb']});
+            fLimb = angleData.split(timeSHS(ii),timeSHS2(ii)).getDataAsVector({[f 'Limb']});
             if ~isempty(sLimb) && ~isempty(fLimb)
-                phaseShift(i)=circCorr(sLimb,fLimb);
+                phaseShift(ii) = circCorr(sLimb,fLimb);
             end
         end
-        Pos=rotatedMarkerData.split(timeSHS(i),timeSHS2(i)).getOrientedData({[s,'ANK'],[f,'ANK']});
+        Pos = rotatedMarkerData.split(timeSHS(ii),timeSHS2(ii)).getOrientedData({[s 'ANK'],[f 'ANK']});
         if ~isempty(Pos)
-            phaseShiftPos(i)=circCorr(Pos(:,1,2),Pos(:,2,2)); %Using y components only, which is equivalent to sAnkFwd
+            % using only y-axis components, which is equivalent to sAnkFwd
+            phaseShiftPos(ii) = circCorr(Pos(:,1,2),Pos(:,2,2));
         end
     end
 end
 
+%% Compute Contributions
+% compute spatial contributions (1D)
+spatialFast = fAnkFwd(:,FHS) - sAnkFwd(:,SHS);
+spatialSlow = sAnkFwd(:,SHS2) - fAnkFwd(:,FHS);
 
-%% Contribution Calculations
+% compute temporal contributions
+ts = timeFHS - timeSHS;
+tf = timeSHS2 - timeFHS;
+difft = ts - tf;
 
-% Compute spatial contribution (1D)
-spatialFast=fAnkFwd(:,FHS) - sAnkFwd(:,SHS);
-spatialSlow=sAnkFwd(:,SHS2) - fAnkFwd(:,FHS);
+% FIXME: DO NOT use absolute value, if the sign is supposed to be the
+% opposite one, just leave it as is. The absolute value makes it murky to
+% know what this quantity means.
+dispSlow = abs(sAnkFwd(:,FHS) - sAnkFwd(:,SHS));
+dispFast = abs(fAnkFwd(:,SHS2) - fAnkFwd(:,FHS));
 
-% Compute temporal contributions
-ts=(timeFHS-timeSHS);
-tf=(timeSHS2-timeFHS);
-difft=ts-tf;
+% velocity of foot relative to hip, should be close to actual TM belt speed
+velocitySlow = dispSlow ./ ts;
+velocityFast = dispFast ./ tf;
+avgVel = mean([velocitySlow velocityFast],2);
+avgStepTime = mean([ts tf],2);  % this is half of 'strideTimeSlow'!
 
-dispSlow=abs(sAnkFwd(:,FHS)-sAnkFwd(:,SHS)); %FIXME: This SHOULD NOT use an abs(), if the sign is supposed to be the opposite one, just make it so. Abs() makes it murky to know what this quantity means.
-dispFast=abs(fAnkFwd(:,SHS2)-fAnkFwd(:,FHS));
+spatialContribution = spatialFast - spatialSlow;
+stepTimeContribution = avgVel .* difft;
+velocityContribution = avgStepTime .* (velocitySlow - velocityFast);
+netContribution = ...
+    spatialContribution + stepTimeContribution + velocityContribution;
 
-velocitySlow=dispSlow./ts; % Velocity of foot relative to hip, should be close to actual belt speed in TM trials
-velocityFast=dispFast./tf;
-avgVel=mean([velocitySlow velocityFast],2);
-avgStepTime=mean([ts tf],2); %This is half strideTimeSlow!
+% alternative and normalized contributions
+strideTimeSlow = timeSHS2 - timeSHS;% same as in computeTemporalParameters
+spatialContributionAlt = spatialContribution ./ strideTimeSlow;
+stepTimeContributionAlt = stepTimeContribution ./ strideTimeSlow;
+velocityContributionAlt = velocityContribution ./ strideTimeSlow;
+netContributionAlt = netContribution ./ strideTimeSlow;
 
-spatialContribution=spatialFast-spatialSlow;
-stepTimeContribution=avgVel.*difft;
-velocityContribution=avgStepTime.*(velocitySlow-velocityFast);
-netContribution=spatialContribution+stepTimeContribution+velocityContribution;
+% spatialContributionNorm = spatialContributionAlt ./ equivalentSpeed;
+% stepTimeContributionNorm = stepTimeContributionAlt ./ equivalentSpeed;
+% velocityContributionNorm = velocityContributionAlt ./ equivalentSpeed;
+% netContributionNorm = netContributionAlt ./ equivalentSpeed;
 
-%Alternative and normalized contributions
-strideTimeSlow=timeSHS2-timeSHS; %Exactly the same definition as in computeTemporalParameters
-spatialContributionAlt=spatialContribution./strideTimeSlow;
-stepTimeContributionAlt=stepTimeContribution./strideTimeSlow;
-velocityContributionAlt=velocityContribution./strideTimeSlow;
-netContributionAlt=netContribution./strideTimeSlow;
+spatialContributionAltRatio = ...
+    spatialContributionAlt ./ (velocitySlow + velocityFast);
+stepTimeContributionAltRatio = ...
+    stepTimeContributionAlt ./ (velocitySlow + velocityFast);
+velocityContributionAltRatio = ...
+    velocityContributionAlt ./ (velocitySlow + velocityFast);
+netContributionAltRatio = ...
+    netContributionAlt ./ (velocitySlow + velocityFast);
 
-%spatialContributionNorm=spatialContributionAlt./equivalentSpeed;
-%stepTimeContributionNorm=stepTimeContributionAlt./equivalentSpeed;
-%velocityContributionNorm=velocityContributionAlt./equivalentSpeed;
-%netContributionNorm=netContributionAlt./equivalentSpeed;
+Dist = stepLengthFast + stepLengthSlow;
+spatialContributionNorm2 = spatialContribution ./ Dist;
+stepTimeContributionNorm2 = stepTimeContribution ./ Dist;
+velocityContributionNorm2 = velocityContribution ./ Dist;
+netContributionNorm2 = netContribution ./ Dist;
 
-spatialContributionAltRatio=spatialContributionAlt./(velocitySlow+velocityFast);
-stepTimeContributionAltRatio=stepTimeContributionAlt./(velocitySlow+velocityFast);
-velocityContributionAltRatio=velocityContributionAlt./(velocitySlow+velocityFast);
-netContributionAltRatio=netContributionAlt./(velocitySlow+velocityFast);
+aux = markerData.getDataAsTS( ...
+    {[f 'ANKy'],[ s 'ANKy']}).getSample(eventTimes,'closest');  % N x 8 x 2
+spatialContributionP = -(2 * aux(:,FHS,1) - aux(:,SHS2,2) - aux(:,SHS,2));
+vf = (aux(:,SHS2,1) - aux(:,FHS,1)) ./ tf;
+vs = (aux(:,FHS,2) - aux(:,SHS,2)) ./ ts;
+stepTimeContributionP = 0.5 * (vf + vs) .* (ts - tf);
+velocityContributionP = 0.5 * (vs - vf) .* (tf + ts);
+netContributionP = ...
+    spatialContributionP + stepTimeContributionP + velocityContributionP;
 
-Dist=stepLengthFast+stepLengthSlow;
-spatialContributionNorm2=spatialContribution./Dist;
-stepTimeContributionNorm2=stepTimeContribution./Dist;
-velocityContributionNorm2=velocityContribution./Dist;
-netContributionNorm2=netContribution./Dist;
+spatialContributionPNorm = spatialContributionP ./ Dist;
+stepTimeContributionPNorm = stepTimeContributionP ./ Dist;
+velocityContributionPNorm = velocityContributionP ./ Dist;
+netContributionPNorm = netContributionP ./ Dist;
 
-aux=markerData.getDataAsTS({[f 'ANKy'],[ s 'ANKy']}).getSample(eventTimes,'closest'); %Will be Nx8x2
-spatialContributionP=-(2*aux(:,FHS,1) -aux(:,SHS2,2)-aux(:,SHS,2));
-vf=(aux(:,SHS2,1)-aux(:,FHS,1))./tf;
-vs=(aux(:,FHS,2)-aux(:,SHS,2))./ts;
-stepTimeContributionP= .5*(vf + vs).*(ts-tf);
-velocityContributionP= .5*(vs-vf).*(tf+ts);
-netContributionP=spatialContributionP+stepTimeContributionP+velocityContributionP;
+% added by Marcela 06/01/2021
+% displacement for single stance
+% FIXME: DO NOT use absolute value, if the sign is supposed to be the
+% opposite one, just leave it as is since the absolute value makes it murky
+% to know what this quantity means.
+dispS = abs(sAnkFwd(:,FHS) - sAnkFwd(:,FTO));
+dispF = abs(fAnkFwd(:,SHS2) - fAnkFwd(:,STO));
 
-spatialContributionPNorm=spatialContributionP./Dist;
-stepTimeContributionPNorm=stepTimeContributionP./Dist;
-velocityContributionPNorm=velocityContributionP./Dist;
-netContributionPNorm=netContributionP./Dist;
+singleStanceSpeedSlow = dispS ./ (timeFHS - timeFTO);
+singleStanceSpeedFast = dispF ./ (timeSHS2 - timeSTO);
+% NOTE: it will not be good for the split conditions to omit 'NaN' values
+singleStanceSpeedAvg = ...
+    mean([singleStanceSpeedSlow singleStanceSpeedFast],2);
+singleStanceSpeedDiff = singleStanceSpeedFast - singleStanceSpeedSlow;
 
-%Added by Marcela 06/01/2021
+% contributions in absolute frame using rotated marker data
+% NOTE: modified by Digna de Kam (April 2018) to use rotated markerdata,
+% which allows for using these values for overground trials
+aux = -rotatedMarkerDataAbs.getDataAsTS( ...
+    {[f 'ANKy'],[ s 'ANKy']}).getSample(eventTimes,'closest');  % N x 8 x 2
+spatialContributionP2 = -(2 * aux(:,FHS,1) - aux(:,SHS2,2) - aux(:,SHS,2));
+vf2 = abs((aux(:,SHS2,1) - aux(:,FHS,1))) ./ tf;
+vs2 = abs((aux(:,FHS,2) - aux(:,SHS,2))) ./ ts;
+stepTimeContributionP2 = 0.5 * (vf2 + vs2) .* (ts - tf);
+velocityContributionP2 = 0.5 * (vs2 - vf2) .* (tf + ts);
+netContributionP2 = ...
+    spatialContributionP2 + stepTimeContributionP2 + velocityContributionP2;
 
-dispS=abs(sAnkFwd(:,FHS)-sAnkFwd(:,FTO)); %displacement for single stance %FIXME: This SHOULD NOT use an abs(), if the sign is supposed to be the opposite one, just make it so. Abs() makes it murky to know what this quantity means.
-dispF=abs(fAnkFwd(:,SHS2)-fAnkFwd(:,STO));
+spatialContributionPNorm2 = spatialContributionP2 ./ Dist;
+stepTimeContributionPNorm2 = stepTimeContributionP2 ./ Dist;
+velocityContributionPNorm2 = velocityContributionP2 ./ Dist;
+netContributionPNorm2 = netContributionP2 ./ Dist;
 
-singleStanceSpeedSlow=dispS./(timeFHS-timeFTO);
-singleStanceSpeedFast=dispF./(timeSHS2-timeSTO);
+% contribution error values
+% from T goal
+stanceTimeSlow = timeSTO - timeSHS;
+stanceTimeFast = timeFTO2 - timeFHS;
+stepTimeIdealT = ((velocitySlow + velocityFast) ./ 2) .* ...
+    (stanceTimeSlow - stanceTimeFast) ./ Dist;
+spatialIdealT = -(velocityContributionNorm2 + stepTimeIdealT);
+stepTimeErrorT = stepTimeIdealT - stepTimeContributionNorm2;
+spatialErrorT = spatialIdealT - spatialContributionNorm2;
 
-singleStanceSpeedAvg=mean([singleStanceSpeedSlow singleStanceSpeedFast],2); %I dont want to do nan mean because it will not be good for the split conditions
-singleStanceSpeedDiff=singleStanceSpeedFast- singleStanceSpeedSlow;
+% from S goal
+rangeSlow = alphaSlow - betaSlow;
+rangeFast = alphaFast - betaFast;
+spatialIdealS = (2 * (alphaFast + alphaSlow) ./ Dist) .* ...
+    ((rangeFast - rangeSlow) ./ (rangeFast + rangeSlow));
+stepTimeIdealS = -velocityContributionNorm2 - spatialIdealS;
+spatialErrorS = spatialIdealS - spatialContributionNorm2;
+stepTimeErrorS = stepTimeIdealS - stepTimeContributionNorm2;
 
-%Contributions in absolute frame using rotated markerdata
-% modified by Digna April 2018 to use rotated markerdata. This allows to
-% use these values for OG trials
-aux=-1*rotatedMarkerDataAbs.getDataAsTS({[f 'ANKy'],[ s 'ANKy']}).getSample(eventTimes,'closest'); %Will be Nx8x2
-spatialContributionP2=-(2*aux(:,FHS,1) -aux(:,SHS2,2)-aux(:,SHS,2));
-vf2=abs((aux(:,SHS2,1)-aux(:,FHS,1)))./tf;
-vs2=abs((aux(:,FHS,2)-aux(:,SHS,2)))./ts;
-stepTimeContributionP2= .5*(vf2 + vs2).*(ts-tf);
-velocityContributionP2= .5*(vs2-vf2).*(tf+ts);
-netContributionP2=spatialContributionP2+stepTimeContributionP2+velocityContributionP2;
+%% Compute Speeds
+% weighted average of ipsilateral speeds: if subjects spend much more time
+% over one foot than the other, this might not be close to arithmetic mean
+% = (ts./tf+ts)*dispSlow./ts + (tf./tf+ts)*dispFast./tf = (ts./tf+ts)*vs + (tf./tf+ts)*vf
+equivalentSpeed = (dispSlow + dispFast) ./ (ts + tf);
 
-spatialContributionPNorm2=spatialContributionP2./Dist;
-stepTimeContributionPNorm2=stepTimeContributionP2./Dist;
-velocityContributionPNorm2=velocityContributionP2./Dist;
-netContributionPNorm2=netContributionP2./Dist;
-
-% Contribution error values
-
-%from T goal
-stanceTimeSlow=timeSTO-timeSHS;
-stanceTimeFast=timeFTO2-timeFHS;
-stepTimeIdealT=((velocitySlow+velocityFast)./2).*(stanceTimeSlow-stanceTimeFast)./Dist;
-spatialIdealT=-(velocityContributionNorm2+stepTimeIdealT);
-stepTimeErrorT=stepTimeIdealT-stepTimeContributionNorm2;
-spatialErrorT=spatialIdealT-spatialContributionNorm2;
-
-%From S goal
-rangeSlow=alphaSlow-betaSlow;
-rangeFast=alphaFast-betaFast;
-spatialIdealS=(2*(alphaFast+alphaSlow)./Dist).*((rangeFast-rangeSlow)./(rangeFast+rangeSlow));
-stepTimeIdealS=(-velocityContributionNorm2)-spatialIdealS;
-spatialErrorS=spatialIdealS-spatialContributionNorm2;
-stepTimeErrorS=stepTimeIdealS-stepTimeContributionNorm2;
-
-
-
-%% Speed calculations
-equivalentSpeed=(dispSlow+dispFast)./(ts+tf); %= (ts./tf+ts)*dispSlow./ts + (tf./tf+ts)*dispFast./tf = (ts./tf+ts)*vs + (tf./tf+ts)*vf = weighted average of ipsilateral speeds: if subjects spend much more time over one foot than the other, this might not be close to the arithmetic average
-
-% sStanceIdxs=indFTO:indFHS;
-% fStanceIdxs=indSTO:indSHS2;
-% singleStanceSpeedSlowAbs=prctile(f_events*diff(sToe(sStanceIdxs,2)),70);
-% singleStanceSpeedFastAbs=prctile(f_events*diff(fToe(fStanceIdxs,2)),70);
-T=length(timeSHS);
-singleStanceSpeedSlowAbs=nan(T,1);
-singleStanceSpeedFastAbs=nan(T,1);
-sToeAbsVel=markerData.getDataAsOTS({[s 'TOE']}).derivate;
-fToeAbsVel=markerData.getDataAsOTS({[f 'TOE']}).derivate;
-for i=1:T
-    if ~isnan(timeFTO(i)) && ~isnan(timeFHS(i)) %Case that the event is missing
-        sToePartial=sToeAbsVel.split(timeFTO(i),timeFHS(i)).getOrientedData();
-        singleStanceSpeedSlowAbs(i)=prctile(sToePartial(:,1,2),70);
+% sStanceIdxs = indFTO:indFHS;
+% fStanceIdxs = indSTO:indSHS2;
+% singleStanceSpeedSlowAbs = prctile(f_events*diff(sToe(sStanceIdxs,2)),70);
+% singleStanceSpeedFastAbs = prctile(f_events*diff(fToe(fStanceIdxs,2)),70);
+T = numel(timeSHS);                                 % number of strides
+singleStanceSpeedSlowAbs = nan(T,1);
+singleStanceSpeedFastAbs = nan(T,1);
+sToeAbsVel = markerData.getDataAsOTS({[s 'TOE']}).derivate;
+fToeAbsVel = markerData.getDataAsOTS({[f 'TOE']}).derivate;
+for ii = 1:T                                        % for each stride, ...
+    if ~isnan(timeFTO(ii)) && ~isnan(timeFHS(ii))   % if events exist, ...
+        sToePartial = ...
+            sToeAbsVel.split(timeFTO(ii),timeFHS(ii)).getOrientedData();
+        singleStanceSpeedSlowAbs(ii) = prctile(sToePartial(:,1,2),70);
     end
-    if ~isnan(timeSTO(i)) && ~isnan(timeSHS2(i))
-        fToePartial=fToeAbsVel.split(timeSTO(i),timeSHS2(i)).getOrientedData();
-        singleStanceSpeedFastAbs(i)=prctile(fToePartial(:,1,2),70);
+    if ~isnan(timeSTO(ii)) && ~isnan(timeSHS2(ii))
+        fToePartial = ...
+            fToeAbsVel.split(timeSTO(ii),timeSHS2(ii)).getOrientedData();
+        singleStanceSpeedFastAbs(ii) = prctile(fToePartial(:,1,2),70);
     end
 end
 
-
-singleStanceSpeedSlowAbsANK=nan(T,1);
-singleStanceSpeedFastAbsANK=nan(T,1);
-sToeAbsVelANK=markerData.getDataAsOTS({[s 'ANK']}).derivate;
-fToeAbsVelANK=markerData.getDataAsOTS({[f 'ANK']}).derivate;
-for i=1:T
-    if ~isnan(timeFTO(i)) && ~isnan(timeFHS(i)) %Case that the event is missing
-        sToePartialANK=sToeAbsVelANK.split(timeFTO(i),timeFHS(i)).getOrientedData();
-        singleStanceSpeedSlowAbsANK(i)=prctile(sToePartialANK(:,1,2),70);
+singleStanceSpeedSlowAbsANK = nan(T,1);
+singleStanceSpeedFastAbsANK = nan(T,1);
+sToeAbsVelANK = markerData.getDataAsOTS({[s 'ANK']}).derivate;
+fToeAbsVelANK = markerData.getDataAsOTS({[f 'ANK']}).derivate;
+for ii = 1:T                                        % for each stride, ...
+    if ~isnan(timeFTO(ii)) && ~isnan(timeFHS(ii))   % if events exist, ...
+        sToePartialANK = ...
+            sToeAbsVelANK.split(timeFTO(ii),timeFHS(ii)).getOrientedData();
+        singleStanceSpeedSlowAbsANK(ii) = ...
+            prctile(sToePartialANK(:,1,2),70);
     end
-    if ~isnan(timeSTO(i)) && ~isnan(timeSHS2(i))
-        fToePartialANK=fToeAbsVelANK.split(timeSTO(i),timeSHS2(i)).getOrientedData();
-        singleStanceSpeedFastAbsANK(i)=prctile(fToePartialANK(:,1,2),70);
+    if ~isnan(timeSTO(ii)) && ~isnan(timeSHS2(ii))
+        fToePartialANK = ...
+            fToeAbsVelANK.split(timeSTO(ii),timeSHS2(ii)).getOrientedData();
+        singleStanceSpeedFastAbsANK(ii) = ...
+            prctile(fToePartialANK(:,1,2),70);
     end
 end
 
-singleStanceSpeedDiffAbsAnk=singleStanceSpeedFastAbsANK-singleStanceSpeedSlowAbsANK;
+singleStanceSpeedDiffAbsAnk = ...
+    singleStanceSpeedFastAbsANK - singleStanceSpeedSlowAbsANK;
+% ankle relative to hip, during ipsilateral stance phase
+stanceSpeedSlow = abs(sAnkFwd(:,STO) - sAnkFwd(:,SHS)) ./ ...
+    (timeSTO - timeSHS);
+stanceSpeedFast = abs(fAnkFwd(:,FTO2) - fAnkFwd(:,FHS)) ./ ...
+    (timeFTO2 - timeFHS);
 
-stanceSpeedSlow=abs(sAnkFwd(:,STO)-sAnkFwd(:,SHS))./(timeSTO-timeSHS); %Ankle relative to hip, during ipsilateral stance
-stanceSpeedFast=abs(fAnkFwd(:,FTO2)-fAnkFwd(:,FHS))./(timeFTO2-timeFHS); %Ankle relative to hip, during ipsilateral stance
+% NOTE: 'stepSpeed' should be the same as the velocity calculation for
+% above contributions.
+stepSpeedSlow = dispSlow ./ ts; % ankle relative to hip, from iHS to cHS
+stepSpeedFast = dispFast ./ tf; % ankle relative to hip, from iHS to cHS
+stepSpeedAvg = mean([stepSpeedSlow stepSpeedFast],2,'omitnan');
 
-%stepSpeed - should be the same as velocity calculation for contributions
-%above.
-stepSpeedSlow=dispSlow./ts; %Ankle relative to hip, from iHS to cHS
-stepSpeedFast=dispFast./tf; %Ankle relative to hip, from iHS to cHS
+% rotate coordinates back to original to prevent disconinuities
+% rotationMatrix = [cosd(-avgRotation) -sind(-avgRotation) 0;
+%     sind(-avgRotation) cosd(-avgRotation) 0;
+%     0 0 1];
+% sAnk(indSHS:indFTO2,:) = (rotationMatrix * sAnk(indSHS:indFTO2,:)')';
+% fAnk(indSHS:indFTO2,:) = (rotationMatrix * fAnk(indSHS:indFTO2,:)')';
+% sHip(indSHS:indFTO2,:) = (rotationMatrix * sHip(indSHS:indFTO2,:)')';
+% fHip(indSHS:indFTO2,:) = (rotationMatrix * fHip(indSHS:indFTO2,:)')';
 
-stepSpeedAvg = nanmean([stepSpeedSlow stepSpeedFast],2);
+%% Compute Other Contributions
+velocityAltContribution = velocityContribution - ...
+    (singleStanceSpeedSlowAbs - singleStanceSpeedFastAbs) .* avgStepTime;
+velocityAltContributionAlt = velocityAltContribution ./ strideTimeSlow;
+velocityAltContributionNorm2 = velocityAltContribution ./ Dist;
+velocityAltContributionP = velocityContributionP - ...
+    (singleStanceSpeedSlowAbs - singleStanceSpeedFastAbs) .* (tf + ts) / 2;
+velocityAltContributionPNorm = velocityAltContributionP ./ Dist;
 
-%Rotate coordinates back to original so there are not
-%disconinuities within next stride
-% rotationMatrix = [cosd(-avgRotation) -sind(-avgRotation) 0; sind(-avgRotation) cosd(-avgRotation) 0; 0 0 1];
-% sAnk(indSHS:indFTO2,:) = (rotationMatrix*sAnk(indSHS:indFTO2,:)')';
-% fAnk(indSHS:indFTO2,:) = (rotationMatrix*fAnk(indSHS:indFTO2,:)')';
-% sHip(indSHS:indFTO2,:) = (rotationMatrix*sHip(indSHS:indFTO2,:)')';
-% fHip(indSHS:indFTO2,:) = (rotationMatrix*fHip(indSHS:indFTO2,:)')';
-
-%% Other contributions
-velocityAltContribution=velocityContribution -(singleStanceSpeedSlowAbs-singleStanceSpeedFastAbs).*avgStepTime;
-velocityAltContributionAlt=velocityAltContribution./strideTimeSlow;
-velocityAltContributionNorm2=velocityAltContribution./Dist;
-velocityAltContributionP=velocityContributionP -(singleStanceSpeedSlowAbs-singleStanceSpeedFastAbs).*(tf+ts)/2;
-velocityAltContributionPNorm=velocityAltContributionP./Dist;
-
-%% Assign parameters to data matrix
-data=nan(length(timeSHS),length(paramLabels));
-for i=1:length(paramLabels)
-    eval(['data(:,i)=' paramLabels{i} ';'])
+%% Assign Parameters to the Data Matrix
+data = nan(length(timeSHS),length(paramLabels));
+for ii = 1:length(paramLabels)
+    eval(['data(:,ii) = ' paramLabels{ii} ';']);
 end
 
-%% Create parameterSeries
-out=parameterSeries(data,paramLabels,[],description);
+%% Output the Computed Parameters
+out = parameterSeries(data,paramLabels,[],description);
 
 end
 
