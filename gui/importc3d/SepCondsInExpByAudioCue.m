@@ -1,4 +1,4 @@
-function [expData, adaptData] = SepCondsInExpByAudioCue(expData, resSavePath, subjectID, eventClass, studyName)
+function [expData, adaptData] = SepCondsInExpByAudioCue(expData, resSavePath, subjectID, eventClass, studyName, muscleLabels, normalizationRefCond, biasRemovalCond)
 % Separate 1 condition into multiple in expData using timing information from audioCue.
 % The function saves the new expData and adaptData in [resSavePath
 % subjectID] and copies the old files into [resSavePath subjectID originalCondName]
@@ -13,16 +13,40 @@ function [expData, adaptData] = SepCondsInExpByAudioCue(expData, resSavePath, su
 %                   separated. 
 %             -adaptData: adaptationData object with conitions separated.
 % INPUTARGS: 
-%           - expData: rawExperimentData object with datlog loaded.
-%           - resSavePath: string, the directory to save the exp and adapt
+%       - expData: rawExperimentData object with datlog loaded.
+%       - resSavePath: string, the directory to save the exp and adapt
 %                   data with conditions separated.
-%           - subjectID: string, subject ID.
-%           - eventClass: string, allowed values: 'force',
+%       - subjectID: string, subject ID.
+%       - eventClass: string, allowed values: 'force',
 %                  'kin',''(default), this usually comes from the info file
 %                   in c3d2mat
-%           - studyName: string, name of the study (use this to add in
+%       - studyName: string, name of the study (use this to add in
 %                   study specific logic when separating trials).
-% Examples: See: loadSubject.m
+%       - shouldComputeEMGNorm - boolean, indicating if EMG norm parameters
+%           should be computed (optional), default false.
+%       - muscleLabels: cell array of strings that represent the
+%           muscleLabels, contains unique muscle names only. e.g., 
+%           {'BF'	'GLU'	'LG'	'MG'	'PER'	'SEMT'	'SOL'	'TA'	'VL'
+%          'VM'}. If shouldComputeEMGNorm, this arg needs to be provided.
+%           If not provided. will throw a warning and make no norm calculations.
+%           note only the muscles provided in the list will have norm per
+%           muscle calculated and the whole leg norm assumes these are all
+%         the muscles available
+%       - normalizationRefCond: string representing the conditon name that will
+%           be used to normalize the EMG data, i.e., all EMG data will be stretched
+%           in reference to the last 40 stirdes (excluding the last 5) of this refcondition such that 100%
+%           = max of the ref condition, 0 = min of the ref condition.
+%       - biasRemovalCond: OPTIONAL. string representing the condition name to
+%           use to compute bias removed EMG norm. if provided, will remove bias using the providec condition and
+%           ignore the trial type (e.g., if provided 'OGBase' will remove
+%           OGBase for all types of trials including TM, etc.)
+%           If not provided, will use default bias removal behavior which looks
+%           for trial type specific baseline (see
+%           labTools\classes\dataStructs\@adaptationData\removeBiasV4.m)
+%
+% Examples: see loadSubject.m,
+% See Also: labTools\fun\parameterCalculation\appendEMGNormParameters.m
+
 
 % $Author: Shuqi Liu $	$Date: 2024/05/22 13:24:55 $	$Revision: 0.1 $
 % Copyright: Sensorimotor Learning Laboratory 2024
@@ -53,6 +77,8 @@ if contains(erase(studyName,' '),'SpinalAdaptation')
         condsToUpdate = find(condsToUpdate)
         error('Conds to split missing, expected 9 condsToUpdate. Got %d, Check condition name.',sum(condsToUpdate))
     end
+elseif contains(erase(studyName,' '),'SpinalAdaptBout')
+    condsToUpdate = contains(expData.metaData.conditionName,'Train');
 else %default to all false (no update), add other study specific logic here.
     condsToUpdate = false(size(expData.metaData.trialsInCondition)); 
 end
@@ -61,6 +87,7 @@ origTrials = cell2mat(expData.metaData.trialsInCondition(condsToUpdate));
 %% Separate conditions using info from the audioCue timing in the datlog.
 tic
 for origTrialIdx = origTrials
+% for origTrialIdx = 3
     fprintf('Processing orig trial %d\n', origTrialIdx)
     
     %use original index to get data log, original condition name 
@@ -89,6 +116,12 @@ for origTrialIdx = origTrials
             %Improvements: this can be done with reg exp
             relMsg(1) = false; %ignore the 1st rest (from rest to mid, only had 1 condition = ramp to start walking, 2nd condition is mid = tied walking)
         end
+    elseif contains(erase(studyName,' '),'SpinalAdaptBoutStudy')
+        if contains(origCondName,'Control')
+            relMsg = ~ismember(msg, 'AccRamp1') & ~contains(msg, 'TMStopAudioCountDown_Train') & ~contains(msg, 'Rest') & ~contains(msg, 'Trial_End');
+        elseif contains(origCondName,'Split Train')
+            relMsg = ~ismember(msg, 'AccRamp1') & ~contains(msg, 'TMStopAudioCountDown_Train') & ~startsWith(msg, 'Split')& ~contains(msg, 'Rest')& ~contains(msg, 'Mid5') & ~contains(msg, 'Trial_End');
+        end
     else %default to all false, add other study specific logic here.
         relMsg = false(size(msg)); 
     end
@@ -105,6 +138,9 @@ for origTrialIdx = origTrials
                 else
                     newName = [origCondName ' ' msg{msgIdx}];
                 end
+            elseif contains(erase(studyName,' '),'SpinalAdaptBoutStudy')
+                %StudySpecific logic: create new trial from event time and after, update curTrl to only keep 1 to eventtime -1 , and update trial meta data
+                    newName = [origCondName ' ' msg{msgIdx}];
             else %default value, add other study specific logic here.
                 newName = [origCondName ' Default'];
             end
@@ -131,9 +167,11 @@ for origTrialIdx = origTrials
                 if ~isempty(trialData{jj})
                     trialData{jj}.metaData.condition = trialData{jj}.metaData.condition+1;
                     if contains(trialData{jj}.metaData.rawDataFilename,'_SpltNewIdx') %already been renamed in prev ite, replace it.
-                        trialData{jj}.metaData.rawDataFilename(end-1:end) = sprintf('%02d',jj);
+                        %TODO: this line needs to support 3 digits in the
+                        %two lines below.
+                        trialData{jj}.metaData.rawDataFilename(end-2:end) = sprintf('%03d',jj);
                     else %1st time being renamed, append
-                        trialData{jj}.metaData.rawDataFilename = [trialData{jj}.metaData.rawDataFilename '_SpltNewIdx' sprintf('%02d',jj)];
+                        trialData{jj}.metaData.rawDataFilename = [trialData{jj}.metaData.rawDataFilename '_SpltNewIdx' sprintf('%03d',jj)];
                         %the correct trialIdx should be the index of this trial in the list of trialData.
                     end
                 end
@@ -220,7 +258,7 @@ end
 tic
 
 %save an intermediate file with the sep conditions
-% save([resSavePath subjectID 'Separated.mat'],'newExpData','-v7.3') 
+save([resSavePath subjectID 'Separated.mat'],'newExpData','-v7.3') 
 
 %save a copy of the exp and adapt data if exists, then replace it.
 if exist([resSavePath filesep subjectID '.mat'],'file')
@@ -231,10 +269,24 @@ if exist([resSavePath filesep subjectID 'params.mat'])
 end
 
 %recompute and overwrite/replace the expData
-expData = newExpData.flushAndRecomputeParameters(eventClass);
-save([resSavePath filesep subjectID '.mat'],'expData','-v7.3') 
+if nargin == 8 && ~isempty(muscleLabels)
+    try
+        expData = newExpData.flushAndRecomputeParameters(eventClass, [],...
+            true, muscleLabels, ...
+            normalizationRefCond, biasRemovalCond);
+    catch
+        %if the adapt creation or the appending new data fails, save the
+            %expData anyway to have some intermediate data to work with.
+            % Save processed data object
+            warning('muscleLabels provided but norm calculation failed. Compute parameters without EMG norm.\n')
+            expData = newExpData.flushAndRecomputeParameters(eventClass);
+    end
+else
+    expData = newExpData.flushAndRecomputeParameters(eventClass);
+end
 
-%create adaptationData object
+save([resSavePath filesep subjectID '.mat'],'expData','-v7.3') 
+%create and save adaptationData object
 adaptData=expData.makeDataObj([resSavePath filesep subjectID]);
 
 toc

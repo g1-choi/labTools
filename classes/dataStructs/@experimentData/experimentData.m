@@ -1,91 +1,104 @@
 classdef experimentData
-    %experimentData  Contains all information for a single experiment
+    % experimentData  Contains all information for a single
+    %   experimental session.
     %
     %   experimentData organizes all data, metadata, and subject
-    %   information for a complete experimental session. It provides
-    %   methods for data processing, analysis, visualization, and
-    %   parameter extraction.
+    % information for a complete experimental session. It provides
+    % methods for data processing, analysis, visualization, and
+    % parameter extraction.
     %
-    %experimentData properties:
-    %   metaData - experimentMetaData object containing experimental
-    %              conditions and trial organization
-    %   subData - subjectData object containing subject demographics
-    %             and anthropometrics
-    %   data - cell array of labData objects or any objects which
-    %          extend labData
-    %   isRaw - returns true if data is rawLabData class (dependent)
-    %   isProcessed - returns true if data is processedLabData class
+    % Toolbox Dependencies:
+    %   None
+    %
+    % experimentData properties:
+    %   metaData    - experimentMetaData object with experimental
+    %                 conditions and trial organization
+    %   subData     - subjectData object with subject demographics
+    %                 and anthropometrics
+    %   data        - cell array of labData objects or any objects
+    %                 that extend labData
+    %   isRaw       - true if data contains rawLabData objects (dependent)
+    %   isProcessed - true if data contains processedLabData objects
     %                 (dependent)
-    %   isStepped - returns true if data is strideData class (dependent)
-    %   fastLeg - computes which belt ('L' or 'R') was the fast belt
-    %             (dependent)
+    %   isStepped   - true if data contains strideData objects (dependent)
+    %   fastLeg     - leg on the fast belt, 'L' or 'R' (dependent)
     %
-    %experimentData methods:
-    %   getSubjectAgeAtExperimentDate - computes subject age at
-    %                                   experiment time
-    %   getSlowLeg - returns leg that was on the slow belt
-    %   getRefLeg - returns reference leg for parameter computations
-    %   getNonRefLeg - returns non-reference leg
-    %   process - processes raw data for all trials
-    %   extractMarkerModels - builds marker position models from data
-    %   checkMarkerHealth - validates marker data quality
-    %   computeAngles - calculates joint angles for all trials
-    %   makeDataObj - creates an adaptationData object
-    %   reduce - creates reducedLabData for all trials
-    %   parameterEvolutionPlot - plots parameter evolution
-    %   parameterTimeCourse - plots parameter time course
-    %   recomputeParameters - recalculates adaptation parameters
-    %   flushAndRecomputeParameters - completely recalculates parameters
-    %   recomputeEvents - recalculates gait events and parameters
-    %   splitIntoStrides - separates trials into individual strides
-    %   getStridedField - extracts strided field data
-    %   getAlignedField - extracts time-aligned field data
-    %   getConditionIdxsFromName - gets condition indices from names
-    %   getStrideInfo - returns stride timing information
+    % experimentData methods:
+    %   experimentData                - constructor
+    %   getSubjectAgeAtExperimentDate - subject age at experiment date
+    %   getSlowLeg                    - slow-belt leg identifier
+    %   getRefLeg                     - reference leg identifier
+    %   getNonRefLeg                  - non-reference leg identifier
+    %   process                       - processes all raw trial data
+    %   extractMarkerModels           - builds marker position models
+    %   checkMarkerHealth             - validates marker data quality
+    %   computeAngles                 - computes joint angles
+    %   makeDataObj                   - creates adaptationData object
+    %   reduce                        - creates reducedLabData objects
+    %   parameterEvolutionPlot        - plots parameter evolution
+    %   parameterTimeCourse           - plots parameter time course
+    %   recomputeParameters           - recalculates adaptation params
+    %   flushAndRecomputeParameters   - fully recalculates parameters
+    %   recomputeEvents               - recalculates gait events
+    %   splitIntoStrides              - splits trials into strides
+    %   getStridedField               - extracts strided field data
+    %   getAlignedField               - extracts time-aligned data
+    %   getConditionIdxsFromName      - condition indices from names
+    %   getStrideInfo                 - stride timing information
     %
-    %See also: experimentMetaData, subjectData, labData,
-    %          adaptationData
+    % experimentData static methods:
+    %   loadobj - backward-compatible object loading (removes DOB)
+    %
+    % See also: experimentMetaData, subjectData, labData, adaptationData
 
     %% Properties
     properties
-        metaData % experimentMetaData object with experiment info
-        subData % subjectData object
-        data % cell array of labData or subclass objects
+        metaData = [] % experimentMetaData object with experiment info
+        subData  = [] % subjectData object
+        data     = {} % cell array of labData or subclass objects
     end
 
     properties (Dependent)
-        isRaw % true if data is rawLabData class
+        isRaw       % true if data is rawLabData class
         isProcessed % true if data is processedLabData class
-        isStepped % true if data is strideData class (or strided)
+        isStepped   % true if data is strideData class (or strided)
         fastLeg
     end
 
     %% Constructor
     methods
         function this = experimentData(meta, sub, data)
-            %experimentData  Constructor for experimentData class
+            %experimentData  Constructor for experimentData class.
             %
             %   this = experimentData(meta, sub, data) creates an
             %   experiment data object with specified metadata, subject
-            %   data, and trial data
+            %   data, and trial data. All arguments are optional.
             %
             %   Inputs:
-            %       meta - experimentMetaData object
-            %       sub - subjectData object
-            %       data - cell array of labData objects
+            %       meta - (optional) experimentMetaData object
+            %       sub  - (optional) subjectData object
+            %       data - (optional) cell array of labData objects
             %
             %   Outputs:
             %       this - experimentData object
             %
             %   See also: experimentMetaData, subjectData, labData
 
-            if nargin > 0
+            arguments
+                meta = []
+                sub  = []
+                data = {}
+            end
+
+            % Only assign non-empty arguments to avoid triggering
+            % property validators with the default empty values
+            if ~isempty(meta)
                 this.metaData = meta;
             end
-            if nargin > 1
+            if ~isempty(sub)
                 this.subData = sub;
             end
-            if nargin > 2
+            if ~isempty(data)
                 this.data = data;
             end
         end
@@ -94,7 +107,15 @@ classdef experimentData
     %% Property Setters
     methods
         function this = set.metaData(this, meta)
-            %set.metaData  Validates and sets experiment metadata
+            %set.metaData  Validates and sets experiment metadata.
+            %
+            %   Property-block validators (mustBeA) were not used here
+            %   because MATLAB evaluates them against the declared
+            %   default value at class load time, causing an immediate
+            %   error since the default [] is a double, not an
+            %   experimentMetaData. The constructor's if ~isempty()
+            %   guard prevents this setter from being reached with the
+            %   default empty value.
             %
             %   Inputs:
             %       this - experimentData object
@@ -111,11 +132,23 @@ classdef experimentData
         end
 
         function this = set.subData(this, sub)
-            %set.subData  Validates and sets subject data
+            %set.subData  Validates and sets subject data.
+            %
+            %   Property-block validators (mustBeA) were not used here
+            %   because MATLAB evaluates them against the declared
+            %   default value at class load time, causing an immediate
+            %   error since the default [] is a double, not a
+            %   subjectData. The constructor's if ~isempty() guard
+            %   prevents this setter from being reached with the
+            %   default empty value.
+            %
+            %   isa() returns true for subclasses of subjectData (e.g.,
+            %   strokeSubjectData), so this validator correctly accepts
+            %   both healthy and stroke participant data objects.
             %
             %   Inputs:
             %       this - experimentData object
-            %       sub - subjectData object
+            %       sub  - subjectData object
 
             if isa(sub, 'subjectData')
                 this.subData = sub;
@@ -127,7 +160,12 @@ classdef experimentData
         end
 
         function this = set.data(this, data)
-            %set.data  Validates and sets experimental trial data
+            %set.data  Validates and sets experimental trial data.
+            %
+            %   Element-level validation (each non-empty cell must
+            %   contain a labData or reducedLabData object) cannot be
+            %   expressed in the properties block, so all three
+            %   property setters are retained as explicit methods.
             %
             %   Inputs:
             %       this - experimentData object
@@ -139,8 +177,8 @@ classdef experimentData
                     if ~isa(data{aux(i)}, 'labData') && ...
                             ~isa(data{aux(i)}, 'reducedLabData')
                         ME = MException('experimentData:Constructor', ...
-                            ['Data is not a cell array of labData (or ' ...
-                            'one of its subclasses) objects.']);
+                            ['Data is not a cell array of labData ' ...
+                            '(or one of its subclasses) objects.']);
                         throw(ME);
                     end
                 end
@@ -156,10 +194,10 @@ classdef experimentData
     %% Dependent Property Getters
     methods
         function a = get.isProcessed(this)
-            %get.isProcessed  Checks if trials have been processed
+            %get.isProcessed  Checks if trials have been processed.
             %
-            %   Returns true if the trials have been processed (i.e.
-            %   parameters have been calculated through ladData.process()),
+            %   Returns true if the trials have been processed (i.e.,
+            %   parameters have been calculated through labData.process()),
             %   and false if they contain only rawData.
             %
             %   Inputs:
@@ -169,8 +207,8 @@ classdef experimentData
             %       a - boolean indicating if data is processed
 
             aux = cellfun('isempty', this.data);
-            idx = find(aux ~= 1); % Not empty
-            a = true;
+            idx = find(aux ~= 1);       % not empty
+            a   = true;
             for i = idx
                 if ~isa(this.data{i}, 'processedLabData')
                     a = false;
@@ -179,9 +217,9 @@ classdef experimentData
         end
 
         function a = get.isStepped(this)
-            %get.isStepped  Checks if data is strided
+            %get.isStepped  Checks if data is strided.
             %
-            %   Returns true if data is an object of the strideData class
+            %   Returns true if data is an object of the strideData class.
             %
             %   Inputs:
             %       this - experimentData object
@@ -191,13 +229,13 @@ classdef experimentData
 
             aux = cellfun('isempty', this.data);
             idx = find(aux ~= 1, 1);
-            a = isa(this.data{idx}, 'strideData');
+            a   = isa(this.data{idx}, 'strideData');
         end
 
         function a = get.isRaw(this)
-            %get.isRaw  Checks if data is raw
+            %get.isRaw  Checks if data is raw.
             %
-            %   Returns true if data is an object of the rawLabData class
+            %   Returns true if data is an object of the rawLabData class.
             %
             %   Inputs:
             %       this - experimentData object
@@ -207,15 +245,15 @@ classdef experimentData
 
             aux = cellfun('isempty', this.data);
             idx = find(aux ~= 1, 1);
-            a = isa(this.data{idx}, 'rawLabData');
+            a   = isa(this.data{idx}, 'rawLabData');
         end
 
         function fastLeg = get.fastLeg(this)
-            %get.fastLeg  Determines which leg was on fast belt
+            %get.fastLeg  Determines which leg was on the fast belt.
             %
             %   Based on each trial, determines from the data (not
-            %   metadata which could be wrong) which leg is the fast
-            %   leg, even if there is no belt data
+            %   metadata, which could be wrong) which leg is the fast
+            %   leg, even if there is no belt data.
             %
             %   Inputs:
             %       this - experimentData object
@@ -226,10 +264,14 @@ classdef experimentData
             %   Note: Currently unimplemented. Try getRefLeg, which
             %         reads slow/fast leg labels from trial metaData.
 
+            % NOTE: The error below makes all code in this method
+            % body unreachable. See suggestion to either remove the
+            % dead code or complete the implementation.
             error(['Unimplemented. Try getRefLeg, which reads ' ...
                 'slow/fast leg labels from trial metaData.']);
-            vR = [];
-            vL = [];
+            % -- Dead code below this line ---------------------------
+            vR     = [];
+            vL     = [];
             trials = cell2mat(this.metaData.trialsInCondition);
             for i = 1:length(trials)
                 trial = trials(i);
@@ -238,8 +280,14 @@ classdef experimentData
                         % Old version: Need to fix, as we are not
                         % really populating the beltSpeedReadData
                         % field.
-                        % vR(end + 1) = nanmean(this.data{trial}.beltSpeedReadData.getDataAsVector('R'));
-                        % vL(end + 1) = nanmean(this.data{trial}.beltSpeedReadData.getDataAsVector('L'));
+                        % vR(end+1) = mean( ...
+                        %     this.data{trial} ...
+                        %     .beltSpeedReadData ...
+                        %     .getDataAsVector('R'), 'omitnan');
+                        % vL(end+1) = mean( ...
+                        %     this.data{trial} ...
+                        %     .beltSpeedReadData ...
+                        %     .getDataAsVector('L'), 'omitnan');
                         % New version:
                         % TODO: Need to come up with an appropriate
                         % velocity measurement if we want this
@@ -247,17 +295,24 @@ classdef experimentData
                     end
                 else % Stepped trial
                     for step = 1:length(this.data{trial})
-                        if ~isempty(this.data{trial}{step}.beltSpeedReadData)
-                            % vR(end + 1) = nanmean(this.data{trial}{step}.beltSpeedReadData.getDataAsVector('R'));
-                            % vL(end + 1) = nanmean(this.data{trial}{step}.beltSpeedReadData.getDataAsVector('L'));
+                        if ~isempty( ...
+                                this.data{trial}{step}.beltSpeedReadData)
+                            % vR(end+1) = mean( ...
+                            %     this.data{trial}{step} ...
+                            %     .beltSpeedReadData ...
+                            %     .getDataAsVector('R'), 'omitnan');
+                            % vL(end+1) = mean( ...
+                            %     this.data{trial}{step} ...
+                            %     .beltSpeedReadData ...
+                            %     .getDataAsVector('L'), 'omitnan');
                         end
                     end
                 end
             end
             if ~isempty(vR) && ~isempty(vL)
-                if nanmean(vR) < nanmean(vL)
+                if mean(vR, 'omitnan') < mean(vL, 'omitnan')
                     fastLeg = 'L';
-                elseif nanmean(vR) > nanmean(vL)
+                elseif mean(vR, 'omitnan') > mean(vL, 'omitnan')
                     % Defaults to this, even if there is no beltSpeedData
                     fastLeg = 'R';
                 else
@@ -300,8 +355,8 @@ classdef experimentData
 
     %% Data Reduction and Object Creation
     methods
-        adaptData = makeDataObj(this, filename, experimentalFlag, ...
-            contraLateralFlag)
+        adaptData = makeDataObj( ...
+            this, filename, experimentalFlag, contraLateralFlag)
 
         reducedThis = reduce(this, eventLabels, N)
     end
@@ -309,18 +364,19 @@ classdef experimentData
     %% Visualization Methods
     methods
         %% Display
-        %HH: I don't like either of these functions. They take way too long
-        %to run, and at the time being they assume that if a field isn't a
-        %label of the adaptParams property, then it must be a label of
-        %experimentalParams (which is a bad assumption because it could
-        %result in 5+ minutes of waiting just to find out the parameter
-        %doesn't exist.)
-        %PI, 5/26/2015: Agreed. Is there any other way to do it if someone asks for a
-        %label that does not exist? Do note that these functions are here
-        %for flexibility of the code, but the really efficient way to do it
-        %is generate an adaptData object (and save it) and use its plotting
-        %functions (which is what these do). Perhaps we could issue a
-        %warning or a disclaimer telling the user that this takes TOO long.
+        % HH: I don't like either of these functions. They take way too
+        % long to run, and at the time being they assume that if a field
+        % isn't a label of the adaptParams property, then it must be a
+        % label of experimentalParams (which is a bad assumption because it
+        % could result in 5+ minutes of waiting just to find out the
+        % parameter doesn't exist.)
+        % PI, 5/26/2015: Agreed. Is there any other way to do it if someone
+        % asks for a label that does not exist? Do note that these
+        % functions are here for flexibility of the code, but the really
+        % efficient way to do it is generate an adaptData object (and save
+        % it) and use its plotting functions (which is what these do).
+        % Perhaps we could issue a warning or a disclaimer telling the user
+        % that this takes TOO long.
         [h, adaptDataObject] = parameterEvolutionPlot(this, field)
 
         [h, adaptDataObject] = parameterTimeCourse(this, field)
@@ -328,11 +384,14 @@ classdef experimentData
 
     %% Parameter and Event Methods
     methods
-        this = recomputeParameters(this, eventClass, initEventSide, ...
-            parameterClasses)
+        this = recomputeParameters( ...
+            this, eventClass, initEventSide, parameterClasses, ...
+            shouldComputeEMGNorm,muscleLabels, ...
+            normalizationRefCond, biasRemovalCond)
 
-        this = flushAndRecomputeParameters(this, eventClass, ...
-            initEventSide)
+        this = flushAndRecomputeParameters(this, eventClass, initEventSide,...
+            shouldComputeEMGNorm,muscleLabels, ...
+            normalizationRefCond, biasRemovalCond)
 
         this = recomputeEvents(this, eventClass, initEventSide)
     end
@@ -341,91 +400,35 @@ classdef experimentData
     methods
         stridedExp = splitIntoStrides(this, refEvent)
 
-        % [stridedField, bad, originalTrial, originalInitTime, events] = ...
-        %         getStridedField(this, field, conditions, events)
-        function [stridedField,bad,originalTrial,originalInitTime,events]=getStridedField(this,field,conditions,events)
-            if nargin<4 || isempty(events)
-                events=[this.getSlowLeg 'HS'];
-            end
-            if nargin<3 || isempty(conditions)
-                trials=cell2mat(this.metaData.trialsInCondition);
-            else
-                if ~isa(conditions,'double') %If conditions are given by name, and not by index
-                    conditions=getConditionIdxsFromName(this,conditions);
-                end
-                trials=cell2mat(this.metaData.trialsInCondition(conditions));
-            end
-            stridedField={};
-            bad=[];
-            originalInitTime=[];
-            originalTrial=[];
-            for i=trials
-                %[aux,bad1,initTime1]=this.data{i}.(field).splitByEvents(this.data{i}.gaitEvents,events);
-                [aux,bad1,initTime1,events]=this.data{i}.getStridedField(field,events);
-                stridedField=[stridedField; aux];
-                bad=[bad; bad1];
-                originalTrial=[originalTrial; i*ones(size(bad1))];
-                originalInitTime=[originalInitTime; initTime1];
-            end
-        end
+        [stridedField, bad, originalTrial, originalInitTime, ...
+            gaitEventLabel] = getStridedField(this, field, ...
+            conditions, gaitEventLabel)
 
-        % [alignedField, originalTrial, bad] = getAlignedField(this, ...
-        %     field, conditions, events, alignmentLengths)
-        function [alignedField,originalTrial,bad]=getAlignedField(this,field,conditions,events,alignmentLengths)
-            if nargin<4 || isempty(events)
-                events=[this.getSlowLeg 'HS'];
-            end
-            if nargin<3 || isempty(conditions)
-                trials=cell2mat(this.metaData.trialsInCondition);
-            else
-                if ~isa(conditions,'double') %If conditions are given by name, and not by index
-                    conditions=getConditionIdxsFromName(this,conditions);
-                end
-                trials=cell2mat(this.metaData.trialsInCondition(conditions));
-            end
-            bad=[];
-            originalInitTime=[];
-            originalTrial=[];
-            originalDurations=[];
-            for i=trials %Trials in condition
-                %[aux,bad1,initTime1]=this.data{i}.(field).splitByEvents(this.data{i}.gaitEvents,events);
-                [alignedField1,bad1]=this.data{i}.getAlignedField(field,events,alignmentLengths);
-                if i==trials(1)
-                    alignedField=alignedField1;
-                else
-                    force=false;
-                    alignedField=alignedField.cat(alignedField1,[],force);
-                end
-                bad=[bad; bad1];
-                originalTrial=[originalTrial; i*ones(size(bad1))];
-                %originalInitTime=[originalInitTime; initTime1];
-                %originalDurations=[originalDurations; originalDurations1];
-            end
-        end
+        [alignedField, originalTrial, bad] = getAlignedField( ...
+            this, field, conditions, gaitEventLabel, alignmentLengths)
     end
 
     %% Auxiliary Methods
     methods
-        conditionIdxs = getConditionIdxsFromName(this, ...
-            conditionNames)
+        conditionIdxs = getConditionIdxsFromName(this, conditionNames)
 
-        [numStrides, trials, initTimes, endTimes] = ...
-            getStrideInfo(this, eventClass)
+        [numStrides, trials, initTimes, endTimes] = getStrideInfo( ...
+            this, eventClass)
     end
 
     %% Private Methods
     methods (Hidden = true, Access = private)
-        adaptData = makeDataObjNew(this, filename, experimentalFlag, ...
-            contraLateralFlag)
+        adaptData = makeDataObjNew( ...
+            this, filename, experimentalFlag, contraLateralFlag)
     end
 
     %% Static Methods
     methods (Static)
         function this = loadobj(this)
-            %loadobj  Object loading method for backward compatibility
+            %loadobj  Object loading method for backward compatibility.
             %
             %   this = loadobj(this) scrubs date of birth information
-            %   when loading saved experimentData objects for privacy
+            %   when loading saved experimentData objects for privacy.
             %
             %   Inputs:
             %       this - experimentData object being loaded
@@ -444,14 +447,17 @@ classdef experimentData
                     'in the future. Please check that all other ' ...
                     'information is intact before overwriting.']);
                 % Determine age (in months):
-                age = round(this.metaData.date.timeSince(...
+                age = round(this.metaData.date.timeSince( ...
                     this.subData.dateOfBirth));
                 % Scrub DOB from subject meta data, save age at
                 % experiment time (in years):
-                this.subData = subjectData([], this.subData.sex, ...
+                this.subData = subjectData([], ...
+                    this.subData.sex, ...
                     this.subData.dominantLeg, ...
-                    this.subData.dominantArm, this.subData.height, ...
-                    this.subData.weight, age / 12, this.subData.ID);
+                    this.subData.dominantArm, ...
+                    this.subData.height, ...
+                    this.subData.weight, ...
+                    age / 12, this.subData.ID);
             end
         end
     end

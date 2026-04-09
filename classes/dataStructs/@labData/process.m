@@ -1,77 +1,85 @@
 function processedData = process(this, subData, eventClass)
-%process  Processes raw data to get angles, events, & adaptation parameters
+% process  Processes raw trial data to compute angles, gait events,
+%   and adaptation parameters.
 %
-%   processedData = process(this, subData) processes the raw data and
-%   returns a processedTrialData object with computed angles, events, EMG
-%   processing, COP, COM, and joint moments
+%   processedData = process(this, subData) processes the raw trial
+%   data and returns a processedTrialData object with computed limb
+%   angles, gait events, filtered EMG, COP, COM, and joint moments.
 %
-%   processedData = process(this, subData, eventClass) optionally specifies
-%   event class for parameter calculation
+%   processedData = process(this, subData, eventClass) uses the
+%   specified gait event detection method.
 %
 %   Inputs:
-%       this - labData object
-%       subData - subject data structure containing weight and other
-%                 subject information
-%       eventClass - optional event classification parameter
+%     this       - labData object
+%     subData    - subjectData object containing subject weight and
+%                  other anthropometric information
+%     eventClass - (optional) String specifying the gait event
+%                  detection method. Defaults to '' if omitted:
+%                    ''      - default (forces for TM trials,
+%                              kinematics otherwise)
+%                    'kin'   - strictly from kinematics
+%                    'force' - strictly from forces
 %
 %   Outputs:
-%       processedData - processedTrialData object containing all processed
-%                       data
+%     processedData - processedTrialData object containing all
+%                     processed data
 %
-%   Note: This function MUST BE idempotent, i.e.,
-%         labData.process.process = labData.process
-%         Otherwise re-processing data may lead to double or triple
-%         filtering.
+%   Note: This function must be idempotent, i.e.,
+%           labData.process().process() == labData.process()
+%         Otherwise re-processing data may lead to double or
+%         triple filtering.
 %
-%   See also: processedTrialData, calcParameters
+%   Toolbox Dependencies:
+%     None
+%
+%   See also: processedTrialData, calcParameters, experimentData/process
 
-% To all coders: this function HAS TO BE idempotent, ie:
-% labData.process.process = labData.process
-% Otherwise, re-processing data may lead to double or triple filtering.
-if nargin < 3 || isempty(eventClass)
-    eventClass = [];
+arguments
+    this
+    subData    (1,1) subjectData
+    eventClass (1,:) char        = ''
 end
 
 % 1) Extract amplitude from EMG data if present
-spikeRemovalFlag = 0;
+spikeRemovalFlag = false;
 [procEMGData, filteredEMGData] = processEMG(this, spikeRemovalFlag);
 
-% 2) Attempt to interpolate marker data if there is missing data (make into
-% function once we have a method to do this)
-markers = this.markerData;
-if ~isempty(markers)
+% 2) Interpolate marker data if there is missing data
+%    (make into function once we have a method to do this)
+if ~isempty(this.markerData)
     % function goes here: check marker data health
 end
 
 % 3) Calculate limb angles
 angleData = calcLimbAngles(this);
 
-% 4) Calculate events from kinematics or force if available
-% Last argument is the perceptual task flag
-events = getEvents(this, angleData, this.metaData.perceptualTasks);
+% 4) Calculate gait events from kinematics or forces if available;
+%    last argument is the perceptual task flag
+gaitEvents = getEvents(this, angleData,  this.metaData.perceptualTasks);
 
-% 5) If 'beltSpeedReadData' is empty, try to generate it from foot markers,
-% if existent
+% 5) If 'beltSpeedReadData' is empty, try to generate it from
+%    foot markers, if existent
 if isempty(this.beltSpeedReadData)
-    this.beltSpeedReadData = ...
-        getBeltSpeedsFromFootMarkers(this, events);
+    this.beltSpeedReadData = getBeltSpeedsFromFootMarkers(this,gaitEvents);
 end
 
-% 6) Get COP, COM and joint torque data.
+% 6) Compute COP, COM, and joint torque data; COP from
+%    computeTorques is discarded in favor of computeCOPAlt below
 [jointMomentsData, ~, COMData] = this.computeTorques(subData.weight);
 % Replacing COPData with alternative computation
-COPData = this.computeCOPAlt;
-% COMDATA = this.CarlysCOMData; % CJS: you should do this!
+COPData = this.computeCOPAlt();
+% COMData = this.CarlysCOMData(); % CJS: you should do this!
 
-% 7) Generate processedTrial object
+% 7) Generate processedTrialData object
 processedData = processedTrialData(this.metaData, this.markerData, ...
     filteredEMGData, this.GRFData, this.beltSpeedSetData, ...
     this.beltSpeedReadData, this.accData, this.EEGData, ...
-    this.footSwitchData, events, procEMGData, angleData, COPData, ...
+    this.footSwitchData, gaitEvents, procEMGData, angleData, COPData, ...
     COMData, jointMomentsData, this.HreflexPin);
 
-% 8) Calculate adaptation parameters - to be recalculated later!!
+% 8) Calculate adaptation parameters (to be recalculated later)
 processedData.adaptParams = ...
     calcParameters(processedData, subData, eventClass);
+
 end
 
