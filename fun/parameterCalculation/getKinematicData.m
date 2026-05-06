@@ -1,165 +1,92 @@
-function [rotatedMarkerData,sAnkFwd,fAnkFwd,sAnk2D,fAnk2D, ...
-    sAngle,fAngle,direction,hipPosSHS,sAnk_fromAvgHip,fAnk_fromAvgHip] =...
-    getKinematicData(eventTimes,markerData,angleData,s)
-%GETKINEMATICDATA extract marker data at specified gait event times
+function [rotatedMarkerData, sAnkFwd, fAnkFwd, sAnk2D, fAnk2D, ...
+    sAngle, fAngle, direction, hipPosSHS, ...
+    sAnk_fromAvgHip, fAnk_fromAvgHip] = ...
+    getKinematicData(eventTimes, markerData, angleData, s)
+%GETKINEMATICDATA Extract marker and angle data at gait event times.
 %
-%   This function loads marker and angle data at predefined gait events and
-% computes:
+%   Loads marker and angle data at six predefined gait events per
+% stride (SHS, FHS, STO, FTO, SHS2, FTO2) and computes ankle
+% positions relative to the average hip position, walking direction,
+% and limb angles. Marker data are first aligned to a hip-centered,
+% rotated coordinate frame before event-time sampling.
 %
-% Three-dimensional matrices in the format:
-%   number of strides x 6 events (SHS through FTO2) x 2 dimensions (x,y)
-%   Variables: sAnk2D, fAnk2D (slow and fast ankle positions in 2D space)
+% Inputs:
+%   eventTimes  - (numStrides x numEvents) array of gait event times
+%   markerData  - orientedLabTimeSeries of 3D marker trajectories
+%   angleData   - labTimeSeries of limb angles (or empty)
+%   s           - (char) slow-leg identifier: 'L' or 'R'
 %
-% Two-dimensional matrices in the format:
-%   number of strides x 6 events (SHS through FTO2)
-%   Variables:
-%    - sAnkFwd, fAnkFwd: ankle position in fore-aft direction relative to
-%       average hip position
-%    - sAngle, fAngle: limb angles (angle of hip-ankle vector with respect
-%       to vertical)
+% Outputs:
+%   rotatedMarkerData - markerData rotated to hip-centered frame
+%   sAnkFwd           - (numStrides x numEvents) slow ankle fore-aft
+%                       position relative to average hip
+%   fAnkFwd           - (numStrides x numEvents) fast ankle fore-aft
+%                       position relative to average hip
+%   sAnk2D            - (numStrides x numEvents x 2) slow ankle 2D
+%                       position relative to hip center
+%   fAnk2D            - (numStrides x numEvents x 2) fast ankle 2D
+%                       position relative to hip center
+%   sAngle            - (numStrides x numEvents) slow leg limb angles,
+%                       sign-corrected so SHS value is positive
+%   fAngle            - (numStrides x numEvents) fast leg limb angles,
+%                       sign-corrected to match sAngle sign
+%   direction         - (numStrides x 1) walking direction (+1 or -1)
+%   hipPosSHS         - (numStrides x 1) hip position at slow heel
+%                       strike
+%   sAnk_fromAvgHip   - slow ankle fore-aft position relative to mean
+%                       hip
+%   fAnk_fromAvgHip   - fast ankle fore-aft position relative to mean
+%                       hip
 %
-% Scalar:
-%    - direction: number of strides x 1 array of walking direction (+1 if
-%       walking toward lab door, -1 if walking toward window)
+% Toolbox Dependencies:
+%   None
 %
-% Additional outputs in the format:
-%   number of strides x 6 events (SHS through FTO2) x 3 dimensions (x,y,z)
-%    - sHIP, fHIP, sANK, fANK, sTOE, fTOE
+% See also EXTRACTKINEMATICDATAATEVENTS, GETKINEMATICDATAABS,
+%   COMPUTESPATIALPARAMETERS.
 
+arguments
+    eventTimes  (:,:) double
+    markerData
+    angleData
+    s           (1,:) char
+end
+
+%% Rotate Marker Data to Hip-Centered Frame
 % THE FOLLOWING RELIES ON HAVING A DECENT RECONSTRUCTION OF HIP MARKERS:
 % define reference marker as midpoint between left and right hip markers
 % compute the average of LHIP and RHIP across the x, y, and z dimensions
-refMarker3D = 0.5 * sum(markerData.getOrientedData({'LHIP','RHIP'}),2);     % mid-hip
+refMarker3D = 0.5 * sum( ...
+    markerData.getOrientedData({'LHIP', 'RHIP'}), 2);
 
 % define reference axis:
 % option 1 (ideal): body reference (vector from left to right hip)
 % compute difference between LHIP and RHIP (i.e., RHIP - LHIP) for x, y, z
-refAxis = squeeze(diff(markerData.getOrientedData({'LHIP','RHIP'}),1,2));   % L to R
+refAxis = squeeze( ...
+    diff(markerData.getOrientedData({'LHIP', 'RHIP'}), 1, 2)); % L to R
 
 % Ref axis option 2 (assuming the subject walks only along the y axis):
 % option 2: assuming the subject walks primarily along the y-axis,
 % project onto the x-direction to determine forward/backward motion
 % merely makes the y and z columns zeros and leaves the x column as is
-refAxis = refAxis * [1 0 0]' * [1 0 0]; % projecting along x direction, this is equivalent to just determining forward/backward sign
+% projecting along x direction — equivalent to determining the
+% forward/backward sign
+refAxis = refAxis * [1 0 0]' * [1 0 0];
 
 % align marker data by translating to the reference marker (mid-hip)
 % and rotating so that the reference axis aligns with the vertical axis
 % call to 'alignRotate' appears equivalent to swapping the signs of the x
 % and y columns (but not z) of the output from 'translate'
-rotatedMarkerData = markerData.translate(-squeeze(refMarker3D)).alignRotate(refAxis,[0 0 1]);
+rotatedMarkerData = markerData.translate(-squeeze(refMarker3D)) ...
+    .alignRotate(refAxis, [0 0 1]);
 
-%% Get Relevant Sample of Data (Using Interpolation)
-% 's' represents the slow limb, 'f' represents the fast limb
-if strcmp(s,'L')
-    f = 'R';
-elseif strcmp(s,'R')
-    f = 'L';
-else
-    error('Invalid limb specification. Must be ''L'' or ''R''.');
-end
-
-% extract marker orientation and axis information
-orientation = markerData.orientation;
-directions = {orientation.sideAxis,orientation.foreaftAxis,orientation.updownAxis};
-signs = [orientation.sideSign orientation.foreaftSign orientation.updownSign];
-
-% define markers of interest
-markers = {'HIP','ANK','TOE'};
-labels = {};
-legs = {s,f};
-legs2 = {'s','f'};
-
-% construct labels for markers (e.g., 'sHIP', 'fANK', etc.)
-for j = 1:length(markers)
-    for leg = 1:2
-        labels{end+1} = [legs{leg} markers{j}]; % odd indices: slow leg, even indices: fast leg
-    end
-end
-
-% check for missing markers
-[bool,idx] = isaLabelPrefix(markerData,labels);
-if ~all(bool)
-    warning(['Markers are missing: ' cell2mat(strcat(labels(~bool),','))]);
-end
-
-% extract marker data at gait event times
-for j = 1:length(labels)    % assign each marker data to a x3 str
-    aux = markerData.getDataAsTS(markerData.addLabelSuffix(labels{j}));
-    if ~isempty(aux.Data)
-        % extract data by finding the closest available sample at each event time
-        newMarkerData = aux.getSample(eventTimes,'closest');
-        relMarkerData = rotatedMarkerData.getDataAsTS(rotatedMarkerData.addLabelSuffix(labels{j}));
-        relMarkerData = relMarkerData.getSample(eventTimes,'closest');
-    else    % otherwise, a marker is missing
-        warning(['Marker ' labels{j} ' is missing. All references to it will return NaN.']);
-        newMarkerData = nan([size(eventTimes) 3]);
-        relMarkerData = nan([size(eventTimes) 3]);
-    end
-
-    % assign extracted marker data to corresponding variables
-    if strcmp(labels{j}(1),s)       % if slow leg markers, ...
-        eval(['s' upper(labels{j}(2)) lower(labels{j}(3:4)) ' = newMarkerData;']);
-        eval(['s' upper(labels{j}(2)) lower(labels{j}(3:4)) 'Rel = relMarkerData;']);
-    elseif strcmp(labels{j}(1),f)   % if fast leg markers, ...
-        eval(['f' upper(labels{j}(2)) lower(labels{j}(3:4)) ' = newMarkerData;']);
-        eval(['f' upper(labels{j}(2)) lower(labels{j}(3:4)) 'Rel = relMarkerData;']);
-    else                            % otherwise, ...
-        error('Marker labels must begin with ''R'' or ''L''.');
-    end
-end
-
-%% Extract Angle Data at Gait Event Times
-if ~isempty(angleData)
-    newAngleData = angleData.getDataAsTS({[s 'Limb'],[f 'Limb']});
-    newAngleData = newAngleData.getSample(eventTimes,'closest');
-    sAngle = newAngleData(:,:,1);
-    fAngle = newAngleData(:,:,2);
-else
-    sAngle = nan(size(eventTimes,1),size(eventTimes,2),1);
-    fAngle = nan(size(eventTimes,1),size(eventTimes,2),1);
-end
-
-%% Compute Walking Direction
-% direction is determined from y-axis difference of slow ankle marker
-% during swing phase (STO to SHS2)
-% TODO: would using SHS and STO work just as well?
-direction = sign(diff(sAnk(:,4:5,2),1,2));
-
-% handle missing values in direction vector
-indsDirNans = find(isnan(direction));   % identify any NaN values
-numNans = length(indsDirNans);          % number of NaN values
-for miss = 1:numNans                    % for each missing value, ...
-    % check only y-axis values for current stride (i.e., none of gait
-    % events with '2' in the name since could be at or approaching a turn)
-    hasVal = ~isnan(sAnk(indsDirNans(miss),1:4,2));
-    % use two most disparate gait events in time to try to account for
-    % noise in the ankle marker y-axis position during stance phase
-    direction(indsDirNans(miss)) = sign(diff(sAnk(indsDirNans(miss), ...
-        [find(hasVal,1) find(hasVal,1,'last')],2),1,2));
-end
-
-% TODO: would it be best to simply leave the zeros since unclear?
-% handle invalid direction values (where only one valid y-value exists)
-indsDirZeros = find(direction == 0);
-numZeros = length(indsDirZeros);
-for inv = 1:numZeros                    % for each invalid measure, ...
-    if indsDirZeros(inv) == 1           % if first stride is invalid, ...
-        direction(1) = direction(2);    % set to be same as stride 2
-    else                                % otherwise, ...
-        % set invalid direction value to be previous stride direction value
-        direction(indsDirZeros(inv)) = direction(indsDirZeros(inv)-1);
-    end
-end
+%% Extract Kinematic Data at Event Times
+[sAnk, fAnk, sAngle, fAngle, direction, hipPos3D, hipPosSHS, ...
+    sAnk_fromAvgHip, fAnk_fromAvgHip] = ...
+    extractKinematicDataAtEvents(eventTimes, markerData, ...
+    rotatedMarkerData, angleData, s);
 
 %% Compute Ankle Positions Relative to Hip
-hipPos3D = 0.5 * (sHip + fHip);
-hipPosFwd = hipPos3D(:,:,2);    % extract y-axis component
-hipPos3DRel = 0.5 * (sHipRel + fHipRel);    % just for check, should be all zeros
-% hipPos = mean([sHip(indSHS,2) fHip(indSHS,2)]);
-hipPosSHS = hipPosFwd(:,1);     % hip position at SHS
-% compute average hip position over gait cycle
-hipPosAvg_forFast = mean(mean(hipPosFwd(:,1:6),'omitnan')); % average hip position from SHS to STO2
-hipPosAvg_forSlow = mean(mean(hipPosFwd(:,3:8),'omitnan')); % average hip position from SHS to STO2
+hipPosFwd = hipPos3D(:, :, 2);      % extract y-axis component
 
 %rotate coordinates to be aligned wiht walking dierection
 %sRotation = calcangle(sAnk(indSHS2,1:2),sAnk(indSTO,1:2),[sAnk(indSTO,1)-100*direction sAnk(indSTO,2)])-90;
@@ -175,23 +102,24 @@ hipPosAvg_forSlow = mean(mean(hipPosFwd(:,3:8),'omitnan')); % average hip positi
 
 % NEED TO ROTATE
 % compute ankle positions relative to average hip position
-sAnkFwd = sAnk(:,:,2) - hipPosFwd;
-fAnkFwd = fAnk(:,:,2) - hipPosFwd;
-sAnk2D = sAnk(:,:,1:2) - hipPos3D(:,:,1:2);
-fAnk2D = fAnk(:,:,1:2) - hipPos3D(:,:,1:2);
-sAnk_fromAvgHip = sAnk(:,:,2) - hipPosAvg_forSlow; % y positon of slow ankle corrected by average hip postion
-fAnk_fromAvgHip = fAnk(:,:,2) - hipPosAvg_forFast; % y positon of fast ankle corrected by average hip postion
+sAnkFwd = sAnk(:, :, 2) - hipPosFwd;
+fAnkFwd = fAnk(:, :, 2) - hipPosFwd;
+sAnk2D  = sAnk(:, :, 1:2) - hipPos3D(:, :, 1:2);
+fAnk2D  = fAnk(:, :, 1:2) - hipPos3D(:, :, 1:2);
 
-% set all steps to have the same slope (a negative slope during stance phase is assumed)
+% set all steps to have the same slope (a negative slope during
+% stance phase is assumed)
 %WHAT IS THIS FOR? WHAT PROBLEMS DOES IT SOLVE THAT THE PREVIOUS ROTATION
 %DOESN'T?
 
 % adjust stride data to ensure consistent slope during stance phase
-aux = sign(diff(sAnk(:,[3 5],2),1,2));  % checks for: sAnk(indSHS2,2) < sAnk(indFHS,2) (doesn't use HIP to avoid HIP fluctuation issues)
-sAnkFwd = bsxfun(@times,sAnkFwd,aux);
-fAnkFwd = bsxfun(@times,fAnkFwd,aux);
-sAnk2D = bsxfun(@times,sAnk2D,aux);
-fAnk2D = bsxfun(@times,fAnk2D,aux);
+% checks for: sAnk(indSHS2,2) < sAnk(indFHS,2)
+% (doesn't use HIP to avoid HIP fluctuation issues)
+aux = sign(diff(sAnk(:, [3 5], 2), 1, 2));
+sAnkFwd = bsxfun(@times, sAnkFwd, aux);
+fAnkFwd = bsxfun(@times, fAnkFwd, aux);
+sAnk2D  = bsxfun(@times, sAnk2D, aux);
+fAnk2D  = bsxfun(@times, fAnk2D, aux);
 
 %Alternative definition: should be equivalent, since we reference to midHip
 %when doing the rotation. Only difference may be in sign of walking, since
@@ -206,10 +134,6 @@ fAnk2D = bsxfun(@times,fAnk2D,aux);
 %fAnkFwd=fAnkRel(:,:,2);
 %sAnk2D=sAnkRel(:,:,1:2);
 %fAnk2D=fAnkRel(:,:,1:2);
-
-aux = sign(sAngle(:,1));            % checks for sAngle(indSHS) < 0
-sAngle = bsxfun(@times,sAngle,aux);
-fAngle = bsxfun(@times,fAngle,aux);
 
 end
 

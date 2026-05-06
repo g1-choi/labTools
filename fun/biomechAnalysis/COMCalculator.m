@@ -1,32 +1,65 @@
 function COMTS = COMCalculator(markerData)
-%COMCALCULATOR Calculate the center of mass time series from marker data
+%COMCALCULATOR Compute segment center-of-mass time series from marker data.
+%
+%   Computes the center of mass of six lower-body segments (foot, shank,
+% and thigh bilaterally) using fixed anthropometric fractions. Segment
+% COMs are stored as an orientedLabTimeSeries with labels
+% RfCOM/LfCOM/RsCOM/LsCOM/RtCOM/LtCOM (x/y/z components). This
+% function is used by TorqueCalculator to provide the COM time series
+% needed for joint torque estimation.
+%
+%   Marker names are resolved by regex to accommodate label variants
+% such as RKNEx and RKNEEx. Missing markers are replaced with NaN
+% columns and a warning is issued.
+%
+% Inputs:
+%   markerData - orientedLabTimeSeries of 3-D marker positions;
+%                should contain RHip, LHip, RAnk, LAnk, RKne, LKne,
+%                RToe, and LToe (with x/y/z axis suffixes)
+%
+% Outputs:
+%   COMTS - orientedLabTimeSeries with 18 channels (6 segments × 3
+%           axes): RfCOMx/y/z, LfCOMx/y/z, RsCOMx/y/z, LsCOMx/y/z,
+%           RtCOMx/y/z, LtCOMx/y/z
+%
+% Toolbox Dependencies:
+%   None
+%
+% See also TORQUECALCULATOR, APPENDBODYCOM, ORIENTEDLABTIMESERIES.
 
-%% Step 1: Get Relevant Marker Data
+arguments
+    markerData (1,1)
+end
+
+%% Get Orientation
 if isempty(markerData.orientation)          % if no orientation data, ...
     warning('Assuming default orientation of axes for marker data.');
-    orientation = orientationInfo([0 0 0],'x','y','z',1,1,1);   % default
+    orientation = orientationInfo( ...
+        [0 0 0], 'x', 'y', 'z', 1, 1, 1);  % default
 else                                        % otherwise, ...
     orientation = markerData.orientation;   % use specified orientation
 end
 
-% get hip position
+%% Retrieve Segment Marker Positions
 u = [orientation.sideSign orientation.foreaftSign orientation.updownSign];
 markerList = {'RHip','LHip','RAnk','LAnk','RKne','LKne','RToe','LToe'};
-for mrkr = 1:length(markerList)                 % for each marker, ...
-    % get marker name allowing for variations of type RKNEx and RKNEEx
-    name = ...
-        markerData.getLabelsThatMatch(['^' upper(markerList{mrkr}) '*x$']);
+for mrkr = markerList                           % for each marker, ...
+    % get marker name allowing for variants like RKNEx and RKNEEx
+    name = markerData.getLabelsThatMatch( ...
+        ['^' upper(mrkr{1}) '*x$']);
     if ~isempty(name)                           % if a match was found, ...
         name = name{1}(1:end-1);                % retrieve marker name
-        aux = markerData.getDataAsVector({[name orientation.sideAxis], ...
-            [name orientation.foreaftAxis],[name orientation.updownAxis]});
-        aux = aux .* u;                         % reorienting marker data??
+        aux = markerData.getDataAsVector({ ...
+            [name orientation.sideAxis], ...
+            [name orientation.foreaftAxis], ...
+            [name orientation.updownAxis]});
+        aux = aux .* u;                         % reorienting marker data
     else                                        % otherwise, ...
-        aux = nan(length(markerData.Time),3);   % marker missing from trial
-        warning(['Marker ' markerList{mrkr} ...   (it happens)
+        aux = nan(length(markerData.Time), 3);  % marker missing from trial
+        warning(['Marker ' mrkr{1} ...             (it happens)
             ' was missing from markerData.']);
     end
-    eval([markerList{mrkr} ' = aux;']);
+    eval([mrkr{1} ' = aux;']);
     % below is more elegant (and recommended) than 'eval' but does not work
     % assignin('base',markerList{i},aux);
 end
@@ -57,7 +90,7 @@ end
 % LToe=markerData.getDataAsVector({['LTOE' orientation.sideAxis],['LTOE' orientation.foreaftAxis],['LTOE' orientation.updownAxis]});
 % LToe=[orientation.sideSign*LToe(:,1),orientation.foreaftSign*LToe(:,2),orientation.updownSign*LToe(:,3)];
 
-%% Step 2: Compute the Center of Mass Position of Each Leg Segment
+%% Compute Segment Centers of Mass
 % foot:
 fcomR = (RAnk + RToe) / 2;
 fcomL = (LAnk + LToe) / 2;
@@ -94,7 +127,7 @@ tcomL = (LHip - LKne) + 0.567 * LKne;
 % tcomR=[tcomxR,tcomyR,tcomzR]; %Thigh
 % tcomL=[tcomxL,tcomyL,tcomzL];
 
-%% Step 3: Save Computations in an 'orientedLabTS' Object
+%% Assemble Output as orientedLabTimeSeries
 COMData = [fcomR fcomL scomR scomL tcomR tcomL];
 % COM accelerations for each leg segment in each directions
 
@@ -102,8 +135,8 @@ labels = {'RfCOM','LfCOM','RsCOM','LsCOM','RtCOM','LtCOM'};
 labels = [strcat(labels,'x'); strcat(labels,'y'); strcat(labels,'z')];
 
 % create 'orientedLabTS' object to output
-COMTS = orientedLabTimeSeries(COMData,markerData.Time(1), ...
-    markerData.sampPeriod,labels(:),markerData.orientation);
+COMTS = orientedLabTimeSeries(COMData, markerData.Time(1), ...
+    markerData.sampPeriod, labels(:), markerData.orientation);
 
 end
 

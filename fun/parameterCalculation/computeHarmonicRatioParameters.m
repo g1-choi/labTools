@@ -1,46 +1,77 @@
-function out = computeHarmonicRatioParameters(strideEvents,markerData, ...
+function out = computeHarmonicRatioParameters(strideEvents, markerData, ...
     options)
-%This function computes harmonic ratio parameters per stride
-%   This function outputs a 'parameterSeries' object, which can be
-% concatenated with other 'parameterSeries' objects, for example, with
-% those from 'computeTemporalParameters'. While this function is used for
-% harmonic ratio parameters exclusively, it should work for any 'labTS'
-% object. This function computes the vertical, medial-lateral,
-% anterior-posterior, and aggregate harmonic ratios parameters using the GT
-% markers.
+%COMPUTEHARMONICRATIOPARAMETERS Compute harmonic ratios per stride.
 %
-%   options: struct (optional) with fields:
-%       .numHarmonics: number of harmonics to include (default: 20)
-%       .useMarkers: 'GT' or 'ALL' (default: 'GT')
+%   Computes stride-by-stride harmonic ratio parameters and returns a
+% parameterSeries object that can be concatenated with other parameter
+% series objects (e.g., from computeTemporalParameters). Computes the
+% vertical, medial-lateral, anterior-posterior, and aggregate harmonic
+% ratios using the hip (HIP) markers.
 %
-% See also computeSpatialParameters, computeTemporalParameters,
-% computeForceParameters, parameterSeries
+% Inputs:
+%   strideEvents - struct of stride-level gait event times generated
+%                  by calcParameters, with fields tSHS and tSHS2
+%                  (N-by-1 vectors, in seconds)
+%   markerData   - orientedLabTimeSeries containing kinematic marker
+%                  data; must include 'RHIP' and/or 'LHIP' label
+%                  prefixes
+%   options      - (optional) struct with fields:
+%                    .numHarmonics: number of harmonics to include
+%                                   (default: 10; following Menz,
+%                                   Lord & Fitzpatrick 2003 J
+%                                   Gerontol A, the foundational HR
+%                                   paper for walking)
+%                    .useMarkers:   'HIP' or 'ALL' (default: 'HIP';
+%                                   HIP markers are placed at the
+%                                   greater trochanter and have lower
+%                                   soft-tissue artifact than
+%                                   ASIS/PSIS)
+%                    .filterCutoff: low-pass cutoff frequency in Hz
+%                                   applied to pelvis position before
+%                                   double differentiation (default:
+%                                   6; conservative cutoff to limit
+%                                   ω² noise amplification from
+%                                   double differentiation; yields
+%                                   ~6 meaningful harmonics at a
+%                                   typical ~1 Hz stride frequency)
+%
+% Outputs:
+%   out - parameterSeries object containing all harmonic ratio
+%         parameters
+%
+% Toolbox Dependencies:
+%   Signal Processing Toolbox (butter, filtfilt — used in
+%   filterMarkerData local function)
+%
+% See also COMPUTESPATIALPARAMETERS, COMPUTETEMPORALPARAMETERS,
+%   COMPUTEFORCEPARAMETERS, PARAMETERSERIES, CALCPARAMETERS.
 
 % TODO:
 %   - store parameters as a structure if possible to convert to
 % 'parameterSeries' object to help code readability (i.e., far fewer lines)
-%   - refilter marker data if beneficial for analysis
 %   - rotate marker data to use a participant-based reference frame
 
-if nargin < 4                           % if no 'options' structure, ...
-    options = struct();                 % set to empty structure
+arguments
+    strideEvents (1,1) struct
+    markerData
+    options      (1,1) struct = struct()
 end
-if ~isfield(options,'numHarmonics')     % if no field, ...
-    options.numHarmonics = 20;          % set to default (20 harmonics)
+
+if ~isfield(options, 'numHarmonics')    % if no field, ...
+    options.numHarmonics = 10;          % set to default (10 harmonics)
 end
-if ~isfield(options,'useMarkers')       % if no field, ...
-    options.useMarkers = 'GT';          % use only 'GT' markers (default)
+if ~isfield(options, 'useMarkers')      % if no field, ...
+    options.useMarkers = 'HIP';         % use only 'HIP' markers (default)
+end
+if ~isfield(options, 'filterCutoff')    % if no field, ...
+    options.filterCutoff = 6;           % set to default (6 Hz)
 end
 
 %% Gait Stride Event Times
-timeSHS = strideEvents.tSHS;    % slow heel strike event times
-timeFTO = strideEvents.tFTO;    % fast toe off event times
-timeFHS = strideEvents.tFHS;    % fast heel strike event times
-timeSTO = strideEvents.tSTO;    % slow toe off event times
+timeSHS  = strideEvents.tSHS;   % slow heel strike event times
 timeSHS2 = strideEvents.tSHS2;  % 2nd slow heel strike event times
-timeFHS2 = strideEvents.tFHS2;  % 2nd fast heel strike event times
 
-%% Labels & Descriptions
+%% Labels and Descriptions
 % harmonic ratio parameters
 aux = { ...
     'harmonicRatio',    'aggregate harmonic ratio'; ...
@@ -48,112 +79,130 @@ aux = { ...
     'harmonicRatioY',   'harmonic ratio along anterior-posterior (i.e., Y) axis'; ...
     'harmonicRatioZ',   'harmonic ratio along vertical (i.e., Z) axis'};
 
-paramLabels = aux(:,1);
-description = aux(:,2);
+paramLabels = aux(:, 1);
+description = aux(:, 2);
 
-%%
-% Compute pelvis position (centroid of markers)
+%% Compute Harmonic Ratio Parameters
+% Get sampling rate from marker data
+samplingRate = 1 / markerData.sampPeriod;
+
+% Compute pelvis position as centroid of HIP markers; pelvisPos is
+% a (T x 3) array where the columns correspond to x, y, z
 pelvisPos = computePelvisPosition(markerData, options.useMarkers);
 
-% Filter position data before differentiation
-pelvisPosFilt = filterMarkerData(pelvisPos, samplingRate, options.filterCutoff);
+% Low-pass filter pelvis position data before differentiation
+pelvisPosFilt = filterMarkerData( ...
+    pelvisPos, samplingRate, options.filterCutoff);
 
-% Compute acceleration via double differentiation
+% Compute pelvis acceleration via double differentiation
 pelvisAccel = computeAcceleration(pelvisPosFilt, samplingRate);
 
-% Identify complete strides (right HS to right HS or left HS to left HS)
-% Use the leg with more detected heel strikes
-allHS = combineHeelStrikes(heelStrikes);
+% Initialize output arrays (one value per stride)
+numStrides     = length(timeSHS);
+harmonicRatio  = nan(numStrides, 1);
+harmonicRatioX = nan(numStrides, 1);
+harmonicRatioY = nan(numStrides, 1);
+harmonicRatioZ = nan(numStrides, 1);
 
-% Initialize output arrays
-numStrides = length(allHS.indices) - 1;
-HR_VT = nan(numStrides, 1);
-HR_AP = nan(numStrides, 1);
-HR_ML = nan(numStrides, 1);
-HR_MAG = nan(numStrides, 1);
-strideIndices = zeros(numStrides, 2);
-strideTimes = zeros(numStrides, 1);
-strideFreq = zeros(numStrides, 1);
+markerTime = markerData.Time;
 
 % Compute harmonic ratio for each stride
-for i = 1:numStrides
-    % Extract stride data
-    idx_start = allHS.indices(i);
-    idx_end = allHS.indices(i+1);
+for st = 1:numStrides
+    tStart = timeSHS(st);
+    tEnd   = timeSHS2(st);
 
-    % Store stride info
-    strideIndices(i,:) = [idx_start, idx_end];
-    strideTimes(i) = (idx_start + idx_end) / 2 / samplingRate;
-    strideDuration = (idx_end - idx_start) / samplingRate;
-    strideFreq(i) = 1 / strideDuration;
+    % Skip strides with missing or invalid boundaries
+    if isnan(tStart) || isnan(tEnd) || tEnd <= tStart
+        continue;
+    end
 
-    % Extract acceleration for this stride
-    accel_stride = pelvisAccel(idx_start:idx_end, :);
+    % Find sample indices for this stride window
+    sampleIdx = markerTime >= tStart & markerTime <= tEnd;
 
-    % Compute harmonic ratio for each direction
-    HR_VT(i) = computeHR_singleStride(accel_stride(:,3), strideFreq(i), options.numHarmonics);
-    HR_AP(i) = computeHR_singleStride(accel_stride(:,2), strideFreq(i), options.numHarmonics);
-    HR_ML(i) = computeHR_singleStride(accel_stride(:,1), strideFreq(i), options.numHarmonics);
+    % Skip strides with insufficient samples to resolve numHarmonics
+    if sum(sampleIdx) < 2 * options.numHarmonics
+        continue;
+    end
+
+    accelStride    = pelvisAccel(sampleIdx, :);
+    strideDuration = tEnd - tStart;
+    strideFreq     = 1 / strideDuration;
+
+    % Compute harmonic ratio for each cardinal direction
+    harmonicRatioX(st) = computeHR_singleStride( ...
+        accelStride(:, 1), strideFreq, options.numHarmonics);
+    harmonicRatioY(st) = computeHR_singleStride( ...
+        accelStride(:, 2), strideFreq, options.numHarmonics);
+    harmonicRatioZ(st) = computeHR_singleStride( ...
+        accelStride(:, 3), strideFreq, options.numHarmonics);
 
     % Compute aggregate HR using vector magnitude
-    accel_mag = sqrt(sum(accel_stride.^2, 2));
-    HR_MAG(i) = computeHR_singleStride(accel_mag, strideFreq(i), options.numHarmonics);
+    accelMag          = sqrt(sum(accelStride.^2, 2));
+    harmonicRatio(st) = computeHR_singleStride( ...
+        accelMag, strideFreq, options.numHarmonics);
 end
 
-% Package results
-HR_results.HR_VT = HR_VT;
-HR_results.HR_AP = HR_AP;
-HR_results.HR_ML = HR_ML;
-HR_results.HR_MAG = HR_MAG;
-HR_results.strideIndices = strideIndices;
-HR_results.strideTimes = strideTimes;
-HR_results.strideFreq = strideFreq;
-
-%% Assign Parameters to the Data Matrix
-data = nan(length(timeSHS),length(paramLabels));
+%% Assign Parameters to Data Matrix
+data = nan(numStrides, length(paramLabels));
 for ii = 1:length(paramLabels)
-    eval(['data(:,ii) = ' paramLabels{ii} ';']);
+    eval(['data(:, ii) = ' paramLabels{ii} ';']);
 end
 
-%% Output the Computed Parameters
-out = parameterSeries(data,paramLabels,[],description);
+%% Output Computed Parameters
+out = parameterSeries(data, paramLabels, [], description);
 
 end
 
-%% Helper Functions
+%% Local Functions
 
-function pelvisPos = computePelvisPosition(markerData,useMarkers)
-% compute pelvis position as centroid of available markers
-if strcmpi(useMarkers,'GT')
-    % use only Greater Trochanter markers (most reliable)
-    pelvisPos = (markerData.R_GT + markerData.L_GT) / 2;
-else
-    % use all available markers
-    markers = {};
-    if isfield(markerData,'R_GT'), markers{end+1} = markerData.R_GT; end
-    if isfield(markerData,'L_GT'), markers{end+1} = markerData.L_GT; end
-    if isfield(markerData,'R_ASIS'), markers{end+1} = markerData.R_ASIS; end
-    if isfield(markerData,'L_ASIS'), markers{end+1} = markerData.L_ASIS; end
-    if isfield(markerData,'R_PSIS'), markers{end+1} = markerData.R_PSIS; end
-    if isfield(markerData,'L_PSIS'), markers{end+1} = markerData.L_PSIS; end
-
-    pelvisPos = mean(cat(3, markers{:}), 3);
-end
-end
-
-function markerDataOut = transformCoordinateSystem(markerDataIn, coordMapping)
-% Transform marker data between coordinate systems
+function pelvisPos = computePelvisPosition(markerData, useMarkers)
+%COMPUTEPELVISPOSITION Compute pelvis centroid position from markers.
+%
+%   Returns the (T x 3) mean position across available pelvis markers,
+% where columns correspond to [x, y, z] in the same units as markerData.
 %
 % Inputs:
-%   markerDataIn: struct with marker fields (each [n x 3])
-%   coordMapping: string specifying the transformation
-%       'XYZ_to_MLAP_VT' - x=ML, y=AP, z=VT (your system, no change needed)
-%       'XZY_to_MLAP_VT' - x=ML, z=AP, y=VT (swap y and z)
-%       'YXZ_to_MLAP_VT' - y=ML, x=AP, z=VT (swap x and y)
-%       Custom: [ML_col, AP_col, VT_col] e.g., [1,2,3] or [2,1,3]
+%   markerData - orientedLabTimeSeries containing pelvis marker data
+%   useMarkers - 'HIP' to use only hip (greater trochanter) markers,
+%                or any other value to use all available pelvis markers
 %
-% Output:
-%   markerDataOut: struct with transformed coordinates
+% Outputs:
+%   pelvisPos - (T x 3) array of pelvis centroid position [x, y, z]
+%
+% Toolbox Dependencies:
+%   None
+if strcmpi(useMarkers, 'HIP')
+    % Use only HIP (greater trochanter) markers (most reliable)
+    hipData   = markerData.getOrientedData({'RHIP', 'LHIP'});
+    pelvisPos = squeeze(mean(hipData, 2, 'omitnan'));
+else
+    % Use all available pelvis markers; getOrientedData returns NaN
+    % columns for any prefixes not present, which are then excluded
+    % by the 'omitnan' flag in mean()
+    pelvisLabels = {'RHIP', 'LHIP', 'RASI', 'LASI', 'RPSI', 'LPSI'};
+    hipData   = markerData.getOrientedData(pelvisLabels);
+    pelvisPos = squeeze(mean(hipData, 2, 'omitnan'));
+end
+end
+
+function markerDataOut = transformCoordinateSystem( ...
+    markerDataIn, coordMapping)
+%TRANSFORMCOORDINATESYSTEM Reorder marker data columns to ML/AP/VT.
+%
+% Inputs:
+%   markerDataIn  - struct with marker fields (each [n x 3])
+%   coordMapping  - string specifying the transformation, or a
+%                   3-element numeric vector [ML_col, AP_col, VT_col]:
+%                     'XYZ_to_MLAP_VT' - x=ML, y=AP, z=VT (no change)
+%                     'XZY_to_MLAP_VT' - x=ML, z=AP, y=VT (swap y,z)
+%                     'YXZ_to_MLAP_VT' - y=ML, x=AP, z=VT (swap x,y)
+%                     'ZXY_to_MLAP_VT' - z=VT, x=ML, y=AP
+%
+% Outputs:
+%   markerDataOut - struct with columns reordered to [ML, AP, VT]
+%
+% Toolbox Dependencies:
+%   None
 
 markerDataOut = struct();
 fields = fieldnames(markerDataIn);
@@ -172,53 +221,76 @@ switch coordMapping
         if isnumeric(coordMapping) && length(coordMapping) == 3
             colOrder = coordMapping;
         else
-            error('Unknown coordinate mapping. Use predefined string or [ML_col, AP_col, VT_col]');
+            error(['Unknown coordinate mapping. Use predefined ' ...
+                'string or [ML_col, AP_col, VT_col].']);
         end
 end
 
 % Apply transformation to all marker fields
-for i = 1:length(fields)
-    markerDataOut.(fields{i}) = markerDataIn.(fields{i})(:, colOrder);
+for fld = 1:length(fields)
+    fieldName = fields{fld};
+    markerDataOut.(fieldName) = markerDataIn.(fieldName)(:, colOrder);
 end
 
-fprintf('Applied coordinate transformation: columns [%d,%d,%d] → [ML,AP,VT]\n', colOrder);
+fprintf(['Applied coordinate transformation: ' ...
+    'columns [%d,%d,%d] → [ML,AP,VT]\n'], colOrder);
 end
 
 function dataFilt = filterMarkerData(data, fs, fc)
-% Low-pass Butterworth filter (4th order, zero-phase)
+%FILTERMARKERDATA Apply zero-phase low-pass Butterworth filter.
+%
+% Inputs:
+%   data - (T x N) data array to filter
+%   fs   - sampling frequency in Hz
+%   fc   - low-pass cutoff frequency in Hz
+%
+% Outputs:
+%   dataFilt - filtered data, same size as data
+%
+% Toolbox Dependencies:
+%   Signal Processing Toolbox (butter, filtfilt)
+
 [b, a] = butter(4, fc/(fs/2), 'low');
 dataFilt = filtfilt(b, a, data);
 end
 
 function accel = computeAcceleration(pos, fs)
-% Compute acceleration via central difference
-% First derivative (velocity)
-vel = gradient(pos, 1/fs);
-% Second derivative (acceleration)
-accel = gradient(vel, 1/fs);
-end
+%COMPUTEACCELERATION Compute acceleration via double differentiation.
+%
+% Inputs:
+%   pos - (T x N) position data array
+%   fs  - sampling frequency in Hz
+%
+% Outputs:
+%   accel - (T x N) acceleration array (same units as pos * fs^2)
+%
+% Toolbox Dependencies:
+%   None
 
-function allHS = combineHeelStrikes(heelStrikes)
-% Combine and sort heel strikes from both legs
-% Determine which to use for stride segmentation
-rightHS = heelStrikes.right;
-leftHS = heelStrikes.left;
-
-% Use whichever leg has more heel strikes
-if length(rightHS) >= length(leftHS)
-    allHS.indices = sort(rightHS);
-    allHS.leg = 'right';
-else
-    allHS.indices = sort(leftHS);
-    allHS.leg = 'left';
+% Compute time derivative of each column separately; gradient(M, h)
+% for a matrix M operates along the column dimension, not rows (time)
+vel   = zeros(size(pos));
+accel = zeros(size(pos));
+for ii = 1:size(pos, 2)
+    vel(:, ii)   = gradient(pos(:, ii), 1/fs);
+    accel(:, ii) = gradient(vel(:, ii), 1/fs);
 end
 end
 
 function HR = computeHR_singleStride(signal, strideFreq, numHarmonics)
-% Compute harmonic ratio for a single stride
-% signal: [n x 1] acceleration signal for one stride
-% strideFreq: fundamental frequency (stride frequency in Hz)
-% numHarmonics: number of harmonics to analyze
+%COMPUTEHR_SINGLESTRIDE Compute harmonic ratio for one stride.
+%
+% Inputs:
+%   signal       - (n x 1) acceleration signal for one stride window
+%   strideFreq   - fundamental stride frequency in Hz
+%   numHarmonics - number of harmonics to sum in the even/odd ratio
+%
+% Outputs:
+%   HR - harmonic ratio (even-harmonic sum / odd-harmonic sum);
+%        NaN if the odd-harmonic sum is zero
+%
+% Toolbox Dependencies:
+%   None
 
 % Ensure signal is column vector and remove mean
 signal = signal(:) - mean(signal);
@@ -231,25 +303,22 @@ P = P(1:floor(n/2)+1);
 P(2:end-1) = 2*P(2:end-1);
 
 % Frequency vector
-fs_local = n * strideFreq; % Effective sampling rate for this stride
-f = fs_local * (0:(floor(n/2))) / n;
-
-% Find fundamental frequency and harmonics
-[~, idx_fundamental] = min(abs(f - strideFreq));
+fsLocal = n * strideFreq; % Effective sampling rate for this stride
+f = fsLocal * (0:(floor(n/2))) / n;
 
 % Extract harmonic amplitudes
 evenSum = 0;
-oddSum = 0;
+oddSum  = 0;
 
-for h = 1:numHarmonics
-    harmonicFreq = h * strideFreq;
-    [~, idx] = min(abs(f - harmonicFreq));
+for hrm = 1:numHarmonics
+    harmonicFreq = hrm * strideFreq;
+    [~, freqIdx] = min(abs(f - harmonicFreq));
 
-    if idx <= length(P)
-        if mod(h, 2) == 0
-            evenSum = evenSum + P(idx);
+    if freqIdx <= length(P)
+        if mod(hrm, 2) == 0
+            evenSum = evenSum + P(freqIdx);
         else
-            oddSum = oddSum + P(idx);
+            oddSum = oddSum + P(freqIdx);
         end
     end
 end
@@ -262,60 +331,3 @@ else
 end
 end
 
-%% Example Usage Function
-function example_usage()
-% Example of how to use the harmonic ratio computation
-
-% Simulate or load your marker data
-samplingRate = 100; % Hz
-duration = 30; % seconds
-t = (0:1/samplingRate:duration-1/samplingRate)';
-
-% Example: Create dummy marker data (replace with your actual data)
-% Assuming your data is in x=ML, y=AP, z=VT format (no transformation needed)
-markerData.R_GT = [0.1*sin(2*pi*1*t), zeros(size(t)), 0.02*sin(2*pi*2*t) + 1.0];
-markerData.L_GT = [-0.1*sin(2*pi*1*t), zeros(size(t)), 0.02*sin(2*pi*2*t) + 1.0];
-
-% If your coordinate system is different, transform it:
-% markerData = transformCoordinateSystem(markerData, 'XYZ_to_MLAP_VT');
-% For your system where x=left-right, y=heading, z=up-down, no transform needed!
-
-% Example heel strikes (replace with your actual gait events)
-strideTime = 1.1; % seconds per stride
-heelStrikes.right = round((strideTime:strideTime:duration) * samplingRate)';
-heelStrikes.left = round((strideTime/2:strideTime:duration) * samplingRate)';
-
-% Set options
-options.filterCutoff = 15;
-options.numHarmonics = 20;
-options.useMarkers = 'GT';
-
-% Compute harmonic ratio
-HR_results = computeHarmonicRatio(markerData, heelStrikes, samplingRate, options);
-
-% Display results
-fprintf('Computed %d strides\n', length(HR_results.HR_VT));
-fprintf('Mean HR_VT: %.2f (SD: %.2f)\n', mean(HR_results.HR_VT, 'omitnan'), std(HR_results.HR_VT, 'omitnan'));
-fprintf('Mean HR_AP: %.2f (SD: %.2f)\n', mean(HR_results.HR_AP, 'omitnan'), std(HR_results.HR_AP, 'omitnan'));
-fprintf('Mean HR_ML: %.2f (SD: %.2f)\n', mean(HR_results.HR_ML, 'omitnan'), std(HR_results.HR_ML, 'omitnan'));
-fprintf('Mean HR_MAG: %.2f (SD: %.2f)\n', mean(HR_results.HR_MAG, 'omitnan'), std(HR_results.HR_MAG, 'omitnan'));
-
-% Plot results
-figure;
-subplot(4,1,1);
-plot(HR_results.strideTimes, HR_results.HR_VT, 'o-');
-ylabel('HR Vertical'); xlabel('Time (s)'); grid on;
-title('Stride-by-Stride Harmonic Ratio');
-
-subplot(4,1,2);
-plot(HR_results.strideTimes, HR_results.HR_AP, 'o-');
-ylabel('HR Anterior-Posterior'); xlabel('Time (s)'); grid on;
-
-subplot(4,1,3);
-plot(HR_results.strideTimes, HR_results.HR_ML, 'o-');
-ylabel('HR Medio-Lateral'); xlabel('Time (s)'); grid on;
-
-subplot(4,1,4);
-plot(HR_results.strideTimes, HR_results.HR_MAG, 'o-');
-ylabel('HR 3D Magnitude'); xlabel('Time (s)'); grid on;
-end

@@ -1,0 +1,17 @@
+# Binary / data files
+*.mat
+*.fig
+*.mexa64
+*.so
+*.pdf
+*.gif
+*.png
+
+# MATLAB auto-save
+*.asv
+
+# Generated documentation
+doc/
+*.html
+*.css
+*.php

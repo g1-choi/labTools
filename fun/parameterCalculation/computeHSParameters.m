@@ -1,0 +1,70 @@
+function out = computeHSParameters(tsData, gaitEvents, eventTypes)
+%COMPUTEHSPARAMETERS Compute heel-strike-aligned parameters per stride.
+%
+%   Extracts the value of each channel in tsData at the slow and fast
+% heel strike events for each stride, and returns a parameterSeries
+% object that can be concatenated with other parameter series objects
+% (e.g., from computeTemporalParameters).
+%
+% Inputs:
+%   tsData     - labTimeSeries object whose channels will be sampled
+%                at each heel strike event
+%   gaitEvents - labTimeSeries of gait events for the trial
+%   eventTypes - cell array of gait event type strings as constructed
+%                in calcParameters (e.g., {'LHS','RTO','RHS','LTO'}),
+%                or a single char specifying the slow leg ('L' or 'R')
+%
+% Outputs:
+%   out - parameterSeries object containing one parameter per channel
+%         per leg, sampled at each stride's heel strike
+%
+% Toolbox Dependencies:
+%   None
+%
+% See also COMPUTEANGLEPARAMETERS, COMPUTETEMPORALPARAMETERS,
+%   COMPUTESPATIALPARAMETERS, COMPUTEFORCEPARAMETERS, PARAMETERSERIES,
+%   CALCPARAMETERS.
+
+% TODO: this should be a method of labTS
+
+arguments
+    tsData     (1,1)
+    gaitEvents (1,1)
+    eventTypes
+end
+
+%% Get Heel Strike Times
+% tHS = labTimeSeries.getArrayedEvents(gaitEvents, ...
+%     {[slowleg 'HS'], [getOtherLeg(slowleg) 'HS']});
+tHS = labTimeSeries.getArrayedEvents(gaitEvents, eventTypes);
+numStrides = size(tHS, 1);
+% keyboard
+% iSHS = find(ismember(tsData.Time, tHS(2:end, 1)));
+% iFHS = find(ismember(tsData.Time, tHS(1:end-1, 2)));
+
+% iSHS = find(ismember(tsData.Time, round(strideEvents.tSHS2, 6)));
+% iFHS = find(ismember(tsData.Time, round(strideEvents.tFHS, 6)));
+
+%% Extract Parameters at Heel Strike
+angSHS = squeeze(tsData.getSample(tHS(2:end, 1)));
+
+try
+    angFHS = squeeze(tsData.getSample(tHS(1:end-1, 2)));
+catch
+    angFHS = NaN(size(angSHS)); % NEEDS FIX
+    disp('no gait events for fast leg!');
+end
+
+%% Assign Labels and Build Output
+slowHSLabels = strcat(tsData.labels, {'AtSHS'});
+fastHSLabels = strcat(tsData.labels, {'AtFHS'});
+% angSHS = angSHS.renameLabels(angSHS.labels, ...
+%     strcat(angSHS.labels, {'@SHS'}));
+% angFHS = angFHS.renameLabels(angFHS.labels, ...
+%     strcat(angFHS.labels, {'@FHS'}));
+paramSHS = parameterSeries(angSHS(:, :), slowHSLabels, [], slowHSLabels);
+paramFHS = parameterSeries(angFHS(:, :), fastHSLabels, [], fastHSLabels);
+out = cat(paramSHS, paramFHS);
+
+end
+

@@ -1,30 +1,30 @@
 function out = computeAngleParameters(angleData, gaitEvents, slowLeg, ...
     eventTypes)
-% computeAngleParameters  Compute joint angle parameters per stride.
+%COMPUTEANGLEPARAMETERS Compute joint angle parameters per stride.
 %
 %   Computes stride-by-stride joint angle parameters and returns a
 % parameterSeries object that can be concatenated with other parameter
 % series objects (e.g., from computeTemporalParameters).
 %
-%   Inputs:
-%     angleData  - labTimeSeries containing limb angle data, with
-%                  channel labels prefixed by leg side ('L' or 'R')
-%     gaitEvents - labTimeSeries of gait events for the trial
-%     slowLeg    - Char specifying the slow-belt leg ('L' or 'R')
-%     eventTypes - Cell array of gait event type strings as constructed
-%                  in calcParameters (e.g., {'LHS','RTO','RHS','LTO'})
+% Inputs:
+%   angleData  - labTimeSeries containing limb angle data, with
+%                channel labels prefixed by leg side ('L' or 'R')
+%   gaitEvents - labTimeSeries of gait events for the trial
+%   slowLeg    - char specifying the slow-belt leg ('L' or 'R')
+%   eventTypes - cell array of gait event type strings as constructed
+%                in calcParameters (e.g., {'LHS','RTO','RHS','LTO'})
 %
-%   Outputs:
-%     out - parameterSeries object containing all angle parameters,
-%           including discrete stride-level measures and heel strike
-%           angle parameters
+% Outputs:
+%   out - parameterSeries object containing all angle parameters,
+%         including discrete stride-level measures and heel strike
+%         angle parameters
 %
-%   Toolbox Dependencies:
-%     None
+% Toolbox Dependencies:
+%   None
 %
-%   See also: computeTemporalParameters, computeSpatialParameters,
-%     computeForceParameters, computeTSdiscreteParameters,
-%     computeHSparameters, parameterSeries, calcParameters
+% See also COMPUTETEMPORALPARAMETERS, COMPUTESPATIALPARAMETERS,
+%   COMPUTEFORCEPARAMETERS, COMPUTETSDISCRETEPARAMETERS,
+%   COMPUTEHSPARAMETERS, PARAMETERSERIES, CALCPARAMETERS.
 
 arguments
     angleData  (1,1)
@@ -37,21 +37,23 @@ end
 % Rename channel labels from L/R convention to s/f convention so that
 % downstream parameter names are leg-agnostic
 fastLeg = getOtherLeg(slowLeg);
-lS = angleData.getLabelsThatMatch(['^' slowLeg]);
-lF = angleData.getLabelsThatMatch(['^' fastLeg]);
+slowLabels = angleData.getLabelsThatMatch(['^' slowLeg]);
+fastLabels = angleData.getLabelsThatMatch(['^' fastLeg]);
 
 % Silence renameLabels warning temporarily during relabeling
 warning('off', 'labTS:renameLabels:dont');
-angleData = angleData.renameLabels(lS, regexprep(lS, ['^' slowLeg], 's'));
-angleData = angleData.renameLabels(lF, regexprep(lF, ['^' fastLeg], 'f'));
+angleData = angleData.renameLabels( ...
+    slowLabels, regexprep(slowLabels, ['^' slowLeg], 's'));
+angleData = angleData.renameLabels( ...
+    fastLabels, regexprep(fastLabels, ['^' fastLeg], 'f'));
 angleData = angleData.renameLabels( ...
     angleData.labels, strcat(angleData.labels, {'Angle'}));
 warning('on', 'labTS:renameLabels:dont');
 
 %% Compute and Output Angle Parameters
-Angles_alt = computeTSdiscreteParameters( ...
+Angles_alt = computeTSDiscreteParameters( ...
     angleData, gaitEvents, eventTypes);
-Angles_HS  = computeHSparameters(angleData, gaitEvents, eventTypes);
+Angles_HS  = computeHSParameters(angleData, gaitEvents, eventTypes);
 out = cat(Angles_alt, Angles_HS);
 
 end
