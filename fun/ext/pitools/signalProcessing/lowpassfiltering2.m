@@ -1,27 +1,50 @@
-function data1 = lowpassfiltering2(datafile, cutoff, complexity, fs)
+function data = lowpassfiltering2(data, fcut, filterOrder, fsample)
+%LOWPASSFILTERING2 Apply a zero-phase Butterworth lowpass filter with
+%mirrored-boundary padding.
+%
+%   Applies a Butterworth lowpass filter with mirrored boundary padding to
+% avoid edge transients. The filter is applied using an FFT-based zero-phase
+% method: the impulse response is computed, its magnitude squared is applied
+% to the data spectrum, and the result is inverse-transformed. Mirrors the
+% input signal end-to-end before filtering so that boundary conditions are
+% smooth, then returns only the first half of the filtered result.
+%
+% Inputs:
+%   data        - (N×C) double, data to filter (columns are channels)
+%   fcut        - scalar double, lowpass cutoff frequency (Hz)
+%   filterOrder - scalar integer, Butterworth filter order
+%   fsample     - scalar double, sampling frequency (Hz)
+%
+% Outputs:
+%   data - (N×C) double, filtered data (same size as input)
+%
+% Toolbox Dependencies: None (butter, filter, fft, ifft are core MATLAB)
+%
+% See also LOWPASSFILTERING, FILTFILTHD_SHORT.
 
-%lowpassfilter function, making sure that there is continuity on borders
-%(mirror/circular continuity)
-%PI 07/2013
+arguments
+    data        (:,:) double
+    fcut        (1,1) double {mustBePositive}
+    filterOrder (1,1) double {mustBePositive, mustBeInteger}
+    fsample     (1,1) double {mustBePositive}
+end
 
-%pass the 'lowpassfilter' function:  1) a data array for filtering,
-                                    %2) the freqency you want removed, and
-                                    %3) the sampling frequency
-%'lowpassfilter' function returns the data array that has been filtered with a
-%lowpass Butterworth filter, with the specified complexity and cutoff frequency
+%% Pad data with mirrored reflection to avoid edge transients
+dataMirrored = [data; data(end:-1:1, :)];
 
-dataAux=[datafile;datafile(end:-1:1,:)];
+%% Design filter and compute its impulse response
+nyquist      = 0.5 * fsample;             % Nyquist frequency (Hz)
+[b, a]       = butter(filterOrder, fcut / nyquist);
+impulse      = [1; zeros(size(dataMirrored, 1) - 1, 1)];
+filterImpulse = filter(b, a, impulse);
 
-[b,a]=butter(complexity, (cutoff/(.5*fs)));   %get lowpass filter vectors
-h = filter(b,a,[1;zeros(size(dataAux,1)-1,1)]);
+%% Apply zero-phase filter via FFT: convolve spectra, take magnitude squared
+% Squaring the magnitude of the impulse spectrum implements zero-phase
+% (forward + backward) filtering without running the filter twice.
+filteredMirrored = ifft( ...
+    fft(dataMirrored) .* abs(fft(filterImpulse * ones(1, size(data, 2)))) .^ 2);
 
-data2 = fft(dataAux) .* abs(fft(h*ones(1,size(datafile,2)))).^2;
+%% Return only the original (un-mirrored) portion
+data = filteredMirrored(1:size(data, 1), :);
 
-data=ifft(data2);
-data1=data(1:size(datafile,1),:);
-
-
-%Filter characteristics
-% figure
-% plot(abs(fft(h)))
-
+end
